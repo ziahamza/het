@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-func main() {
+func main1() {
 	stopWords := map[string]bool{}
 	fileData, err := ioutil.ReadFile("stopwords.txt")
 	if err != nil {
