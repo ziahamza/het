@@ -10,7 +10,8 @@ import (
 	"github.com/boltdb/bolt"
 )
 
-func indexPages(db *bolt.DB, ch chan int) {
+func indexPages(db *bolt.DB) int {
+	status := 0
 	err := db.Update(func(tx *bolt.Tx) error {
 		fmt.Println("Indexing pages ...")
 
@@ -20,7 +21,7 @@ func indexPages(db *bolt.DB, ch chan int) {
 		uri, _ := pending.Cursor().First()
 		if uri == nil {
 			fmt.Printf("no pending doc to index ... \n")
-			ch <- 1
+			status = 1
 			return nil
 		}
 
@@ -30,7 +31,7 @@ func indexPages(db *bolt.DB, ch chan int) {
 		if docs.Get(uri) != nil {
 			fmt.Printf("uri %s already exists ... ignoring\n", string(uri[:]))
 
-			ch <- 0
+			status = 0
 			return nil
 		}
 
@@ -47,8 +48,6 @@ func indexPages(db *bolt.DB, ch chan int) {
 			log.Fatal(err)
 		}
 
-		fmt.Println(doc)
-
 		links := []string{}
 		text := []string{}
 
@@ -60,10 +59,11 @@ func indexPages(db *bolt.DB, ch chan int) {
 				if n.Data == "a" {
 					for _, a := range n.Attr {
 						if a.Key == "href" {
-							uri, err := url.Parse(a.Val)
-							if err != nil && (uri.Scheme == "http" || uri.Scheme == "https") {
-								links = append(links, parent.ResolveReference(uri).String())
-								break
+							uri, err := parent.Parse(a.Val)
+							if err != nil {
+								links = append(links, uri.String())
+							} else {
+								fmt.Printf("got back error parsing %s\n", a.Val)
 							}
 
 							break
@@ -96,13 +96,15 @@ func indexPages(db *bolt.DB, ch chan int) {
 			pending.Put([]byte(link), []byte(""))
 		}
 
-		ch <- 0
+		status = 0
 		return nil
 	})
 
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	return status
 }
 
 func main() {
@@ -145,14 +147,9 @@ func main() {
 		log.Fatal(err)
 	}
 
-	ch := make(chan int)
-
 	fmt.Printf("Starting to index pending docs ... \n")
 
-	x := 0
-	for x == 0 {
-		go indexPages(db, ch)
-		x = <-ch
+	for indexPages(db) == 0 {
 	}
 
 	fmt.Println("finishing off indexing ... ")
