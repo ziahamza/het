@@ -38,6 +38,19 @@ func indexPages(db *bolt.DB) int {
 
 		resp, err := http.Get(string(uri[:]))
 
+		if resp.StatusCode < 200 || resp.StatusCode >= 299 {
+			fmt.Printf("page %s not found \n", string(uri[:]))
+			status = 0
+			return nil
+		}
+
+		contentType := resp.Header.Get("Content-Type")
+		if !strings.Contains(contentType, "text/html") {
+			fmt.Printf("non html file (%s) ... ignoring\n", contentType)
+			status = 0
+			return nil
+		}
+
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -52,7 +65,7 @@ func indexPages(db *bolt.DB) int {
 		links := []string{}
 		text := []string{}
 
-		parent, _ := url.Parse(string(uri[:]))
+		parent, _ := url.Parse(resp.Request.URL.String())
 
 		var f func(*html.Node)
 		f = func(n *html.Node) {
@@ -91,14 +104,15 @@ func indexPages(db *bolt.DB) int {
 		f(doc)
 
 		fmt.Printf("---------------------------------------------\n")
-		fmt.Printf("got back url %s with size: %d \n", string(uri[:]), len(text))
+		fmt.Printf("got back url %s with size: %d \n", parent.String(), len(text))
 
 		for _, link := range links {
 			fmt.Printf("putting in children: %s \n", link)
 			pending.Put([]byte(link), []byte(""))
 		}
 
-		docs.Put(uri, []byte(strings.Join(text, "")))
+		docs.Put([]byte(parent.String()), []byte(strings.Join(text, "")))
+		docs.Put([]byte(uri), []byte(strings.Join(text, "")))
 
 		status = 0
 		return nil
