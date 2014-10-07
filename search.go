@@ -4,34 +4,37 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-
-	"os"
+	"net/url"
 
 	"code.google.com/p/go.net/html"
 	"github.com/boltdb/bolt"
 )
 
-var db bolt.DB
+func indexPages(db *bolt.DB, ch chan int) {
+	err := db.Update(func(tx *bolt.Tx) error {
+		fmt.Println("Indexing pages ...")
 
-func indexPages() {
-	db.Update(func(tx *bolt.Tx) error {
 		pending := tx.Bucket([]byte("pending"))
 		docs := tx.Bucket([]byte("docs"))
 
-		url, _ := pending.Cursor().First()
-		if url == nil {
+		uri, _ := pending.Cursor().First()
+		if uri == nil {
+			fmt.Printf("no pending doc to index ... \n")
+			ch <- 1
 			return nil
 		}
 
-		pending.Delete(url)
+		pending.Delete(uri)
 
 		// doc already indexed ... returning
-		if docs.Get(url) != nil {
-			fmt.Printf("url %s already exists ... ignoring\n", string(url[:]))
+		if docs.Get(uri) != nil {
+			fmt.Printf("uri %s already exists ... ignoring\n", string(uri[:]))
+
+			ch <- 0
 			return nil
 		}
 
-		resp, err := http.Get(string(url[:]))
+		resp, err := http.Get(string(uri[:]))
 
 		if err != nil {
 			log.Fatal(err)
@@ -49,14 +52,20 @@ func indexPages() {
 		links := []string{}
 		text := []string{}
 
+		parent, _ := url.Parse(string(uri[:]))
+
 		var f func(*html.Node)
 		f = func(n *html.Node) {
 			if n.Type == html.ElementNode {
 				if n.Data == "a" {
 					for _, a := range n.Attr {
 						if a.Key == "href" {
-							pending.Put([]byte(a.Val), []byte(""))
-							links = append(links, a.Val)
+							uri, err := url.Parse(a.Val)
+							if err != nil && (uri.Scheme == "http" || uri.Scheme == "https") {
+								links = append(links, parent.ResolveReference(uri).String())
+								break
+							}
+
 							break
 						}
 					}
@@ -71,6 +80,7 @@ func indexPages() {
 				text = append(text, n.Data)
 				return
 			}
+
 			for c := n.FirstChild; c != nil; c = c.NextSibling {
 				f(c)
 			}
@@ -79,14 +89,20 @@ func indexPages() {
 		f(doc)
 
 		fmt.Printf("---------------------------------------------\n")
-		fmt.Println("got back text strings: %v", text)
+		fmt.Printf("got back url %s with size: %d \n", string(uri[:]), len(text))
 
 		for _, link := range links {
-			fmt.Println(link)
+			fmt.Printf("putting in children: %s \n", link)
+			pending.Put([]byte(link), []byte(""))
 		}
 
+		ch <- 0
 		return nil
 	})
+
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func main() {
@@ -97,20 +113,21 @@ func main() {
 
 	defer db.Close()
 
-	db.Update(func(tx *bolt.Tx) error {
+	err = db.Update(func(tx *bolt.Tx) error {
+		fmt.Printf("creating db ... \n")
 		docs, err := tx.CreateBucketIfNotExists([]byte("docs"))
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 
-		keywords, err := tx.CreateBucketIfNotExists([]byte("keywords"))
+		_, err = tx.CreateBucketIfNotExists([]byte("keywords"))
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 
 		pending, err := tx.CreateBucketIfNotExists([]byte("pending"))
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 
 		doc, _ := docs.Cursor().First()
@@ -119,67 +136,24 @@ func main() {
 			pending.Put([]byte("http://www.cse.ust.hk"), []byte(""))
 		}
 
-		url, _ := pending.Cursor().First()
-
-		if url == nil {
-			fmt.Printf("Entire web space searched!! hurray :D")
-			os.Exit(0)
-		}
+		fmt.Printf("Created db successfully!\n")
 
 		return nil
 	})
 
-	rootUrl := ""
-	resp, err := http.Get(rootUrl)
-
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	defer resp.Body.Close()
+	ch := make(chan int)
 
-	doc, err := html.Parse(resp.Body)
-	if err != nil {
-		log.Fatal(err)
+	fmt.Printf("Starting to index pending docs ... \n")
+
+	x := 0
+	for x == 0 {
+		go indexPages(db, ch)
+		x = <-ch
 	}
 
-	fmt.Println(doc)
-
-	links := []string{}
-	text := []string{}
-
-	var f func(*html.Node)
-	f = func(n *html.Node) {
-		if n.Type == html.ElementNode {
-			if n.Data == "a" {
-				for _, a := range n.Attr {
-					if a.Key == "href" {
-						links = append(links, a.Val)
-						break
-					}
-				}
-			}
-
-			// ignore scripts, styles
-			if n.Data == "script" || n.Data == "style" {
-				return
-			}
-		}
-		if n.Type == html.TextNode {
-			text = append(text, n.Data)
-			return
-		}
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			f(c)
-		}
-	}
-
-	f(doc)
-
-	fmt.Println("got back text strings: %v", text)
-
-	fmt.Printf("Links in %s \n", rootUrl)
-	for _, link := range links {
-		fmt.Println(link)
-	}
+	fmt.Println("finishing off indexing ... ")
 }
