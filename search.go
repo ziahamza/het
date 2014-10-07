@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"code.google.com/p/go.net/html"
 	"github.com/boltdb/bolt"
@@ -96,6 +97,8 @@ func indexPages(db *bolt.DB) int {
 			fmt.Printf("putting in children: %s \n", link)
 			pending.Put([]byte(link), []byte(""))
 		}
+
+		docs.Put(uri, []byte(strings.Join(text, "")))
 
 		status = 0
 		return nil
