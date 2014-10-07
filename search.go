@@ -11,6 +11,31 @@ import (
 	"github.com/boltdb/bolt"
 )
 
+// used by the docs bucket to refer to a specific keyword under a document
+type KeywordRef struct {
+	word      string
+	frequency int
+}
+
+// used by the keywords bucket to refer to a document containing a specific keyword
+type DocumentRef struct {
+	URL       string
+	frequency int
+}
+
+// stored in docs bucket
+type Doc struct {
+	title    string
+	size     int
+	keywords []KeywordRef
+}
+
+// stored in keywords bucket
+type Keyword struct {
+	frequency int
+	docs      []DocumentRef
+}
+
 func indexPages(db *bolt.DB) int {
 	status := 0
 	err := db.Update(func(tx *bolt.Tx) error {
@@ -18,6 +43,7 @@ func indexPages(db *bolt.DB) int {
 
 		pending := tx.Bucket([]byte("pending"))
 		docs := tx.Bucket([]byte("docs"))
+		keywords := tx.Bucket([]byte("keywords"))
 
 		uri, _ := pending.Cursor().First()
 		if uri == nil {
@@ -65,6 +91,8 @@ func indexPages(db *bolt.DB) int {
 		links := []string{}
 		text := []string{}
 
+		words := make(map[string]int)
+
 		parent, _ := url.Parse(resp.Request.URL.String())
 
 		var f func(*html.Node)
@@ -73,7 +101,6 @@ func indexPages(db *bolt.DB) int {
 				if n.Data == "a" {
 					for _, a := range n.Attr {
 						if a.Key == "href" {
-
 							uri, err := parent.Parse(a.Val)
 							if err == nil && (uri.Scheme == "http" || uri.Scheme == "https") {
 								links = append(links, uri.String())
@@ -106,13 +133,26 @@ func indexPages(db *bolt.DB) int {
 		fmt.Printf("---------------------------------------------\n")
 		fmt.Printf("got back url %s with size: %d \n", parent.String(), len(text))
 
+		body := strings.Join(text, "")
+
+		tokens := strings.Split(body, " ")
+		for _, token := range tokens {
+			word := strings.Trim(token, " ")
+
+			words[word] = words[word] + 1
+		}
+
+		for word := range words {
+			documents := keywords.Get([]byte(word))
+		}
+
 		for _, link := range links {
 			fmt.Printf("putting in children: %s \n", link)
 			pending.Put([]byte(link), []byte(""))
 		}
 
-		docs.Put([]byte(parent.String()), []byte(strings.Join(text, "")))
-		docs.Put([]byte(uri), []byte(strings.Join(text, "")))
+		docs.Put([]byte(parent.String()), []byte(body))
+		docs.Put([]byte(uri), []byte(body))
 
 		status = 0
 		return nil
