@@ -59,9 +59,9 @@ func indexPages(db *bolt.DB) int {
 				if n.Data == "a" {
 					for _, a := range n.Attr {
 						if a.Key == "href" {
-                            
+
 							uri, err := parent.Parse(a.Val)
-							if err == nil {
+							if err == nil && (uri.Scheme == "http" || uri.Scheme == "https") {
 								links = append(links, uri.String())
 							} else {
 								fmt.Printf("got back error parsing %s\n", a.Val)
