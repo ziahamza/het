@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,29 +12,33 @@ import (
 	"github.com/boltdb/bolt"
 )
 
+type Stats struct {
+	DocumentCount, KeywordCount int
+}
+
 // used by the docs bucket to refer to a specific keyword under a document
 type KeywordRef struct {
-	word      string
-	frequency int
+	Word      string
+	Frequency int
 }
 
 // used by the keywords bucket to refer to a document containing a specific keyword
 type DocumentRef struct {
 	URL       string
-	frequency int
+	Frequency int
 }
 
 // stored in docs bucket
-type Doc struct {
-	title    string
-	size     int
-	keywords []KeywordRef
+type Document struct {
+	Title    string
+	Size     int
+	Keywords []KeywordRef
 }
 
 // stored in keywords bucket
 type Keyword struct {
-	frequency int
-	docs      []DocumentRef
+	Frequency int
+	Docs      []DocumentRef
 }
 
 func indexPages(db *bolt.DB) int {
@@ -45,27 +50,34 @@ func indexPages(db *bolt.DB) int {
 		docs := tx.Bucket([]byte("docs"))
 		keywords := tx.Bucket([]byte("keywords"))
 
-		uri, _ := pending.Cursor().First()
-		if uri == nil {
+		ubytes, _ := pending.Cursor().First()
+		if ubytes == nil {
 			fmt.Printf("no pending doc to index ... \n")
 			status = 1
 			return nil
 		}
 
-		pending.Delete(uri)
+		uri := string(ubytes[:])
 
-		// doc already indexed ... returning
-		if docs.Get(uri) != nil {
-			fmt.Printf("uri %s already exists ... ignoring\n", string(uri[:]))
+		pending.Delete(ubytes)
+
+		// original uri already indexed
+		if docs.Get(ubytes) != nil {
+			fmt.Printf("uri %s already exists ... ignoring\n", uri)
 
 			status = 0
 			return nil
 		}
 
-		resp, err := http.Get(string(uri[:]))
+		resp, err := http.Get(uri)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		defer resp.Body.Close()
 
 		if resp.StatusCode < 200 || resp.StatusCode >= 299 {
-			fmt.Printf("page %s not found \n", string(uri[:]))
+			fmt.Printf("page %s not found \n", uri)
 			status = 0
 			return nil
 		}
@@ -77,13 +89,18 @@ func indexPages(db *bolt.DB) int {
 			return nil
 		}
 
-		if err != nil {
-			log.Fatal(err)
+		parent, _ := url.Parse(resp.Request.URL.String())
+		parentUri := parent.String()
+
+		// if the new redirected uri already indexed
+		if parentUri != uri && docs.Get([]byte(parentUri)) != nil {
+			fmt.Printf("uri %s already exists ... ignoring\n", uri)
+
+			status = 0
+			return nil
 		}
 
-		defer resp.Body.Close()
-
-		doc, err := html.Parse(resp.Body)
+		htmlRoot, err := html.Parse(resp.Body)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -91,9 +108,7 @@ func indexPages(db *bolt.DB) int {
 		links := []string{}
 		text := []string{}
 
-		words := make(map[string]int)
-
-		parent, _ := url.Parse(resp.Request.URL.String())
+		var title string
 
 		var f func(*html.Node)
 		f = func(n *html.Node) {
@@ -101,13 +116,23 @@ func indexPages(db *bolt.DB) int {
 				if n.Data == "a" {
 					for _, a := range n.Attr {
 						if a.Key == "href" {
-							uri, err := parent.Parse(a.Val)
-							if err == nil && (uri.Scheme == "http" || uri.Scheme == "https") {
-								links = append(links, uri.String())
+							child, err := parent.Parse(a.Val)
+							if err == nil && (child.Scheme == "http" || child.Scheme == "https") {
+								links = append(links, child.String())
 							} else {
 								fmt.Printf("got back error parsing %s\n", a.Val)
 							}
 
+							break
+						}
+					}
+				}
+
+				if n.Data == "title" {
+					// get the first text node inside title
+					for c := n.FirstChild; c != nil; c = c.NextSibling {
+						if c.Type == html.TextNode {
+							title = c.Data
 							break
 						}
 					}
@@ -118,6 +143,7 @@ func indexPages(db *bolt.DB) int {
 					return
 				}
 			}
+
 			if n.Type == html.TextNode {
 				text = append(text, n.Data)
 				return
@@ -128,31 +154,70 @@ func indexPages(db *bolt.DB) int {
 			}
 		}
 
-		f(doc)
+		f(htmlRoot)
 
 		fmt.Printf("---------------------------------------------\n")
-		fmt.Printf("got back url %s with size: %d \n", parent.String(), len(text))
+		fmt.Printf("Title    : %s \n", title)
+		fmt.Printf("Url      : %s \n", parentUri)
+		fmt.Printf("Size     : %d \n", len(text))
+		fmt.Printf("Children : %d \n", len(links))
 
 		body := strings.Join(text, "")
 
 		tokens := strings.Split(body, " ")
+
+		wordCount := make(map[string]int)
 		for _, token := range tokens {
 			word := strings.Trim(token, " ")
 
-			words[word] = words[word] + 1
+			wordCount[word] = wordCount[word] + 1
 		}
 
-		for word := range words {
-			documents := keywords.Get([]byte(word))
+		doc := Document{
+			Title:    title,
+			Size:     len(text),
+			Keywords: []KeywordRef{},
+		}
+
+		for word := range wordCount {
+			doc.Keywords = append(doc.Keywords, KeywordRef{
+				Word:      word,
+				Frequency: wordCount[word],
+			})
+
+			keyword := Keyword{
+				Frequency: 0,
+
+				Docs: []DocumentRef{},
+			}
+
+			kbytes := keywords.Get([]byte(word))
+			if kbytes != nil {
+				json.Unmarshal(kbytes, &keyword)
+			}
+
+			keyword.Frequency = keyword.Frequency + wordCount[word]
+
+			keyword.Docs = append(keyword.Docs, DocumentRef{
+				URL:       uri,
+				Frequency: wordCount[word],
+			})
+
+			kbytes, _ = json.Marshal(&keyword)
+
+			keywords.Put([]byte(word), kbytes)
 		}
 
 		for _, link := range links {
-			fmt.Printf("putting in children: %s \n", link)
 			pending.Put([]byte(link), []byte(""))
 		}
 
-		docs.Put([]byte(parent.String()), []byte(body))
-		docs.Put([]byte(uri), []byte(body))
+		dbytes, _ := json.Marshal(&doc)
+
+		docs.Put(ubytes, dbytes)
+		if parentUri != uri {
+			docs.Put([]byte(parentUri), dbytes)
+		}
 
 		status = 0
 		return nil
@@ -184,6 +249,17 @@ func main() {
 		if err != nil {
 			return err
 		}
+
+		/*
+			stats, err := tx.CreateBucketIfNotExists([]byte("stats"))
+			if err != nil {
+				return err
+			}
+
+			if stats.Cursor().First() == nil {
+				stats.Put([]byte(""), []byte(""))
+			}
+		*/
 
 		pending, err := tx.CreateBucketIfNotExists([]byte("pending"))
 		if err != nil {
