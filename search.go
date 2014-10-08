@@ -164,13 +164,17 @@ func indexPages(db *bolt.DB) int {
 
 		body := strings.Join(text, "")
 
-		tokens := strings.Split(body, " ")
+		tokens := strings.Split(body, "\n")
 
 		wordCount := make(map[string]int)
 		for _, token := range tokens {
-			word := strings.Trim(token, " ")
+			wordLine := strings.TrimSpace(token)
+            wordLine = strings.Replace(wordLine, "\t", " ", -1)
+            words := strings.Split(wordLine, " ")
+            for _, word := range words {
+                wordCount[word] = wordCount[word] + 1
+            }
 
-			wordCount[word] = wordCount[word] + 1
 		}
 
 		doc := Document{
