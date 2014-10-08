@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,7 +13,7 @@ import (
 	"github.com/boltdb/bolt"
 )
 
-type Stats struct {
+type CountStats struct {
 	DocumentCount, KeywordCount int
 }
 
@@ -49,6 +50,18 @@ func indexPages(db *bolt.DB) int {
 		pending := tx.Bucket([]byte("pending"))
 		docs := tx.Bucket([]byte("docs"))
 		keywords := tx.Bucket([]byte("keywords"))
+		stats := tx.Bucket([]byte("stats"))
+
+		cbytes := stats.Get([]byte("count"))
+		if cbytes == nil {
+			return errors.New("Count Statistics not found in the db!")
+		}
+
+		countStats := CountStats{}
+		err := json.Unmarshal(cbytes, &countStats)
+		if err != nil {
+			return err
+		}
 
 		ubytes, _ := pending.Cursor().First()
 		if ubytes == nil {
@@ -194,6 +207,9 @@ func indexPages(db *bolt.DB) int {
 			kbytes := keywords.Get([]byte(word))
 			if kbytes != nil {
 				json.Unmarshal(kbytes, &keyword)
+			} else {
+				// a new keyword count, update stats
+				countStats.KeywordCount = countStats.KeywordCount + 1
 			}
 
 			keyword.Frequency = keyword.Frequency + wordCount[word]
@@ -218,6 +234,8 @@ func indexPages(db *bolt.DB) int {
 		if parentUri != uri {
 			docs.Put([]byte(parentUri), dbytes)
 		}
+
+		countStats.DocumentCount = countStats.DocumentCount + 1
 
 		status = 0
 		return nil
@@ -250,25 +268,30 @@ func main() {
 			return err
 		}
 
-		/*
-			stats, err := tx.CreateBucketIfNotExists([]byte("stats"))
+		stats, err := tx.CreateBucketIfNotExists([]byte("stats"))
+		if err != nil {
+			return err
+		}
+
+		sbytes := stats.Get([]byte("count"))
+		if sbytes == nil {
+			stat := CountStats{DocumentCount: 0, KeywordCount: 0}
+			sbytes, err = json.Marshal(&stat)
 			if err != nil {
 				return err
 			}
 
-			if stats.Cursor().First() == nil {
-				stats.Put([]byte(""), []byte(""))
-			}
-		*/
+			stats.Put([]byte("count"), sbytes)
+		}
 
 		pending, err := tx.CreateBucketIfNotExists([]byte("pending"))
 		if err != nil {
 			return err
 		}
 
-		doc, _ := docs.Cursor().First()
+		dbytes, _ := docs.Cursor().First()
 
-		if doc == nil {
+		if dbytes == nil {
 			pending.Put([]byte("http://www.cse.ust.hk"), []byte(""))
 		}
 
