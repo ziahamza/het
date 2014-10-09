@@ -9,38 +9,11 @@ import (
 	"net/url"
 	"strings"
 
+	"../het"
+
 	"code.google.com/p/go.net/html"
 	"github.com/boltdb/bolt"
 )
-
-type CountStats struct {
-	DocumentCount, PendingCount, KeywordCount int
-}
-
-// used by the docs bucket to refer to a specific keyword under a document
-type KeywordRef struct {
-	Word      string
-	Frequency int
-}
-
-// used by the keywords bucket to refer to a document containing a specific keyword
-type DocumentRef struct {
-	URL       string
-	Frequency int
-}
-
-// stored in docs bucket
-type Document struct {
-	Title    string
-	Size     int
-	Keywords []KeywordRef
-}
-
-// stored in keywords bucket
-type Keyword struct {
-	Frequency int
-	Docs      []DocumentRef
-}
 
 func indexPages(db *bolt.DB) int {
 	status := 0
@@ -57,7 +30,7 @@ func indexPages(db *bolt.DB) int {
 			return errors.New("Count Statistics not found in the db!")
 		}
 
-		countStats := CountStats{}
+		countStats := het.CountStats{}
 		err := json.Unmarshal(cbytes, &countStats)
 		if err != nil {
 			return err
@@ -184,22 +157,23 @@ func indexPages(db *bolt.DB) int {
 
 		}
 
-		doc := Document{
-			Title:    title,
-			Size:     len(text),
-			Keywords: []KeywordRef{},
+		doc := het.Document{
+			Title:        title,
+			Size:         len(text),
+			ModifiedDate: resp.Header.Get("Last-Modified"),
+			Keywords:     []het.KeywordRef{},
 		}
 
 		for word := range wordCount {
-			doc.Keywords = append(doc.Keywords, KeywordRef{
+			doc.Keywords = append(doc.Keywords, het.KeywordRef{
 				Word:      word,
 				Frequency: wordCount[word],
 			})
 
-			keyword := Keyword{
+			keyword := het.Keyword{
 				Frequency: 0,
 
-				Docs: []DocumentRef{},
+				Docs: []het.DocumentRef{},
 			}
 
 			kbytes := keywords.Get([]byte(word))
@@ -212,7 +186,7 @@ func indexPages(db *bolt.DB) int {
 
 			keyword.Frequency = keyword.Frequency + wordCount[word]
 
-			keyword.Docs = append(keyword.Docs, DocumentRef{
+			keyword.Docs = append(keyword.Docs, het.DocumentRef{
 				URL:       uri,
 				Frequency: wordCount[word],
 			})
@@ -265,7 +239,7 @@ func indexPages(db *bolt.DB) int {
 }
 
 func main() {
-	db, err := bolt.Open("./index.db", 0600, nil)
+	db, err := bolt.Open("../index.db", 0600, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -291,7 +265,7 @@ func main() {
 
 		sbytes := stats.Get([]byte("count"))
 		if sbytes == nil {
-			stat := CountStats{DocumentCount: 0, KeywordCount: 0}
+			stat := het.CountStats{DocumentCount: 0, KeywordCount: 0}
 			sbytes, err = json.Marshal(&stat)
 			if err != nil {
 				return err
