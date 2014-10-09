@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 
 	"../het"
 
@@ -35,8 +36,11 @@ func main() {
 
 			resultFile.WriteString(doc.Title + "\n")
 			resultFile.WriteString(string(k) + "\n")
+			resultFile.WriteString("Last Modified: " + doc.LastModified + "\n")
 
-			for _, kw := range doc.Keywords {
+			sort.Sort(doc.Keywords)
+
+			for _, kw := range doc.Keywords[0:10] {
 				resultFile.WriteString(kw.Word + " " + fmt.Sprintf("%d", kw.Frequency) + ";")
 			}
 			resultFile.WriteString("\n")

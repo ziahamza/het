@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"../het"
+	"../stemmer"
 
 	"code.google.com/p/go.net/html"
 	"github.com/boltdb/bolt"
@@ -27,51 +28,55 @@ func indexPages(db *bolt.DB) int {
 
 		cbytes := stats.Get([]byte("count"))
 		if cbytes == nil {
-			return errors.New("Count Statistics not found in the db!")
+			log.Fatal(errors.New("Count Statistics not found in the db!"))
 		}
 
 		countStats := het.CountStats{}
 		err := json.Unmarshal(cbytes, &countStats)
 		if err != nil {
-			return err
+			log.Fatal(err)
 		}
 
 		ubytes, _ := pending.Cursor().First()
 		if ubytes == nil {
 			fmt.Printf("no pending doc to index ... \n")
+
+			// status one means finished
 			status = 1
 			return nil
 		}
 
 		uri := string(ubytes[:])
 
+		// delete the url from pending
 		pending.Delete(ubytes)
 
 		// original uri already indexed
 		if docs.Get(ubytes) != nil {
 			fmt.Printf("uri %s already exists ... ignoring\n", uri)
-
-			status = 0
 			return nil
 		}
 
 		resp, err := http.Get(uri)
 		if err != nil {
-			log.Fatal(err)
+			// not removing page as internet is not working ...
+			fmt.Printf("Error getting back a page (%s) ... waiting 2 sec \n", err.Error())
+
+			// add the page back to pending to try again
+			pending.Put(ubytes, []byte(""))
+			return nil
 		}
 
 		defer resp.Body.Close()
 
 		if resp.StatusCode < 200 || resp.StatusCode >= 299 {
 			fmt.Printf("page %s not found \n", uri)
-			status = 0
 			return nil
 		}
 
 		contentType := resp.Header.Get("Content-Type")
-		if !strings.Contains(contentType, "text/html") {
+		if !(strings.Contains(contentType, "html")) {
 			fmt.Printf("non html file (%s) ... ignoring\n", contentType)
-			status = 0
 			return nil
 		}
 
@@ -81,14 +86,13 @@ func indexPages(db *bolt.DB) int {
 		// if the new redirected uri already indexed
 		if parentUri != uri && docs.Get([]byte(parentUri)) != nil {
 			fmt.Printf("uri %s already exists ... ignoring\n", uri)
-
-			status = 0
 			return nil
 		}
 
 		htmlRoot, err := html.Parse(resp.Body)
 		if err != nil {
-			log.Fatal(err)
+			fmt.Printf("got back error parsing html ... ignoring\n")
+			return nil
 		}
 
 		links := []string{}
@@ -152,7 +156,10 @@ func indexPages(db *bolt.DB) int {
 			wordLine = strings.Replace(wordLine, "\t", " ", -1)
 			words := strings.Split(wordLine, " ")
 			for _, word := range words {
-				wordCount[word] = wordCount[word] + 1
+				word = stemmer.StemWord(word)
+				if word != "" {
+					wordCount[word] = wordCount[word] + 1
+				}
 			}
 
 		}
@@ -160,7 +167,7 @@ func indexPages(db *bolt.DB) int {
 		doc := het.Document{
 			Title:        title,
 			Size:         len(text),
-			ModifiedDate: resp.Header.Get("Last-Modified"),
+			LastModified: resp.Header.Get("Last-Modified"),
 			Keywords:     []het.KeywordRef{},
 		}
 
@@ -212,27 +219,30 @@ func indexPages(db *bolt.DB) int {
 
 		sbytes, err := json.Marshal(&countStats)
 		if err != nil {
-			return nil
+			log.Fatal(err)
 		}
 
 		stats.Put([]byte("count"), sbytes)
 
 		fmt.Printf("---------------------------------------------\n")
-		fmt.Printf("Title    : %s \n", title)
-		fmt.Printf("Url      : %s \n", parentUri)
-		fmt.Printf("Size     : %d \n", len(text))
-		fmt.Printf("Children : %d \n \n", len(links))
+		fmt.Printf("Title         : %s \n", doc.Title)
+		fmt.Printf("Url           : %s \n", parentUri)
+		fmt.Printf("Size          : %d \n", doc.Size)
+		fmt.Printf("Last Modified : %s \n", doc.LastModified)
+		fmt.Printf("Children      : %d \n \n", len(links))
 
 		fmt.Printf("Documents Indexed : %d \n", countStats.DocumentCount)
 		fmt.Printf("Documents Left    : %d \n", countStats.PendingCount)
 		fmt.Printf("Keywords Indexed  : %d \n", countStats.KeywordCount)
 
 		status = 0
+
 		return nil
 	})
 
 	if err != nil {
-		log.Fatal(err)
+		fmt.Printf("Got back an error indexing page: %s \n", err.Error())
+		return 0
 	}
 
 	return status
@@ -245,6 +255,8 @@ func main() {
 	}
 
 	defer db.Close()
+
+	stemmer.LoadStopWords()
 
 	err = db.Update(func(tx *bolt.Tx) error {
 		fmt.Printf("creating db ... \n")
