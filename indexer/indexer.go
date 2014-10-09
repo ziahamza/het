@@ -12,6 +12,8 @@ import (
         "runtime"
         "time"
 
+	"../het"
+
 	"code.google.com/p/go.net/html"
 	"github.com/boltdb/bolt"
 )
@@ -68,7 +70,7 @@ func indexPages(db *bolt.DB, waitingGroup *sync.WaitGroup) int {
 			return errors.New("Count Statistics not found in the db!")
 		}
 
-		countStats := CountStats{}
+		countStats := het.CountStats{}
 		err := json.Unmarshal(cbytes, &countStats)
 		if err != nil {
 			return err
@@ -199,30 +201,31 @@ func indexPages(db *bolt.DB, waitingGroup *sync.WaitGroup) int {
 		wordCount := make(map[string]int)
 		for _, token := range tokens {
 			wordLine := strings.TrimSpace(token)
-            wordLine = strings.Replace(wordLine, "\t", " ", -1)
-            words := strings.Split(wordLine, " ")
-            for _, word := range words {
-                wordCount[word] = wordCount[word] + 1
-            }
+			wordLine = strings.Replace(wordLine, "\t", " ", -1)
+			words := strings.Split(wordLine, " ")
+			for _, word := range words {
+				wordCount[word] = wordCount[word] + 1
+			}
 
 		}
 
-		doc := Document{
-			Title:    title,
-			Size:     len(text),
-			Keywords: []KeywordRef{},
+		doc := het.Document{
+			Title:        title,
+			Size:         len(text),
+			ModifiedDate: resp.Header.Get("Last-Modified"),
+			Keywords:     []het.KeywordRef{},
 		}
 
 		for word := range wordCount {
-			doc.Keywords = append(doc.Keywords, KeywordRef{
+			doc.Keywords = append(doc.Keywords, het.KeywordRef{
 				Word:      word,
 				Frequency: wordCount[word],
 			})
 
-			keyword := Keyword{
+			keyword := het.Keyword{
 				Frequency: 0,
 
-				Docs: []DocumentRef{},
+				Docs: []het.DocumentRef{},
 			}
 
 			kbytes := keywords.Get([]byte(word))
@@ -235,7 +238,7 @@ func indexPages(db *bolt.DB, waitingGroup *sync.WaitGroup) int {
 
 			keyword.Frequency = keyword.Frequency + wordCount[word]
 
-			keyword.Docs = append(keyword.Docs, DocumentRef{
+			keyword.Docs = append(keyword.Docs, het.DocumentRef{
 				URL:       uri,
 				Frequency: wordCount[word],
 			})
@@ -260,6 +263,23 @@ func indexPages(db *bolt.DB, waitingGroup *sync.WaitGroup) int {
 
 		countStats.DocumentCount = countStats.DocumentCount + 1
 
+		sbytes, err := json.Marshal(&countStats)
+		if err != nil {
+			return nil
+		}
+
+		stats.Put([]byte("count"), sbytes)
+
+		fmt.Printf("---------------------------------------------\n")
+		fmt.Printf("Title    : %s \n", title)
+		fmt.Printf("Url      : %s \n", parentUri)
+		fmt.Printf("Size     : %d \n", len(text))
+		fmt.Printf("Children : %d \n \n", len(links))
+
+		fmt.Printf("Documents Indexed : %d \n", countStats.DocumentCount)
+		fmt.Printf("Documents Left    : %d \n", countStats.PendingCount)
+		fmt.Printf("Keywords Indexed  : %d \n", countStats.KeywordCount)
+
 		status = 0
 		return nil
 	})
@@ -273,7 +293,7 @@ func indexPages(db *bolt.DB, waitingGroup *sync.WaitGroup) int {
 }
 
 func main() {
-	db, err := bolt.Open("./index.db", 0600, nil)
+	db, err := bolt.Open("../index.db", 0600, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -301,7 +321,7 @@ func main() {
 
 		sbytes := stats.Get([]byte("count"))
 		if sbytes == nil {
-			stat := CountStats{DocumentCount: 0, KeywordCount: 0}
+			stat := het.CountStats{DocumentCount: 0, KeywordCount: 0}
 			sbytes, err = json.Marshal(&stat)
 			if err != nil {
 				return err
