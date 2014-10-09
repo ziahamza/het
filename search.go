@@ -14,7 +14,7 @@ import (
 )
 
 type CountStats struct {
-	DocumentCount, KeywordCount int
+	DocumentCount, PendingCount, KeywordCount int
 }
 
 // used by the docs bucket to refer to a specific keyword under a document
@@ -169,12 +169,6 @@ func indexPages(db *bolt.DB) int {
 
 		f(htmlRoot)
 
-		fmt.Printf("---------------------------------------------\n")
-		fmt.Printf("Title    : %s \n", title)
-		fmt.Printf("Url      : %s \n", parentUri)
-		fmt.Printf("Size     : %d \n", len(text))
-		fmt.Printf("Children : %d \n", len(links))
-
 		body := strings.Join(text, "")
 
 		tokens := strings.Split(body, "\n")
@@ -182,11 +176,11 @@ func indexPages(db *bolt.DB) int {
 		wordCount := make(map[string]int)
 		for _, token := range tokens {
 			wordLine := strings.TrimSpace(token)
-            wordLine = strings.Replace(wordLine, "\t", " ", -1)
-            words := strings.Split(wordLine, " ")
-            for _, word := range words {
-                wordCount[word] = wordCount[word] + 1
-            }
+			wordLine = strings.Replace(wordLine, "\t", " ", -1)
+			words := strings.Split(wordLine, " ")
+			for _, word := range words {
+				wordCount[word] = wordCount[word] + 1
+			}
 
 		}
 
@@ -229,6 +223,7 @@ func indexPages(db *bolt.DB) int {
 		}
 
 		for _, link := range links {
+			countStats.PendingCount = countStats.PendingCount + 1
 			pending.Put([]byte(link), []byte(""))
 		}
 
@@ -240,6 +235,23 @@ func indexPages(db *bolt.DB) int {
 		}
 
 		countStats.DocumentCount = countStats.DocumentCount + 1
+
+		sbytes, err := json.Marshal(&countStats)
+		if err != nil {
+			return nil
+		}
+
+		stats.Put([]byte("count"), sbytes)
+
+		fmt.Printf("---------------------------------------------\n")
+		fmt.Printf("Title    : %s \n", title)
+		fmt.Printf("Url      : %s \n", parentUri)
+		fmt.Printf("Size     : %d \n", len(text))
+		fmt.Printf("Children : %d \n \n", len(links))
+
+		fmt.Printf("Documents Indexed : %d \n", countStats.DocumentCount)
+		fmt.Printf("Documents Left    : %d \n", countStats.PendingCount)
+		fmt.Printf("Keywords Indexed  : %d \n", countStats.KeywordCount)
 
 		status = 0
 		return nil
