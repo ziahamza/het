@@ -134,7 +134,9 @@ func indexPages(db *bolt.DB, waitingGroup *sync.WaitGroup) int {
 
 		htmlRoot, err := html.Parse(resp.Body)
 		if err != nil {
-			log.Fatal(err)
+			fmt.Printf("%s", err)
+            status = 0
+            return nil
 		}
 
 		links := []string{}
