@@ -30,26 +30,44 @@ func main() {
 			return nil
 		}
 
+        firstLine := true
+
 		docs.ForEach(func(k, v []byte) error {
+            if (firstLine == false) {resultFile.WriteString("-------------------------------------------------------------------------------------------\n")
+            } else {
+                firstLine = false
+            }
 			doc := het.Document{}
 			json.Unmarshal(v, &doc)
 
 			fmt.Fprintf(resultFile, "%s\n", doc.Title)
 			fmt.Fprintf(resultFile, "%s\n", k)
-			fmt.Fprintf(resultFile, "%s, %d", doc.LastModified, doc.Size)
+            if (len(doc.LastModified) > 0) {
+                fmt.Fprintf(resultFile, "%s, %d", doc.LastModified, doc.Size)
+            } else {
+                fmt.Fprintf(resultFile, "No Last Modifited Date, %d", doc.Size)
+            }
+            
 
 			resultFile.WriteString("\n")
-            
-            for _, chile :
 
 			sort.Sort(doc.Keywords)
 
-			for _, kw := range doc.Keywords[0:10] {
+			for _, kw := range doc.Keywords {
 				resultFile.WriteString(kw.Word + " " + fmt.Sprintf("%d", kw.Frequency) + ";")
 			}
-			resultFile.WriteString("\n")
-
-			resultFile.WriteString("-------------------------------------------------------------------------------------------\n")
+            resultFile.WriteString("\n")
+            
+            firstChild := true
+            for _, child := range doc.ChildLinks {
+                if (firstChild == false) {
+                    resultFile.WriteString("\n"+child);
+                } else {
+                    resultFile.WriteString(child);
+                    firstChild = false
+                }
+                
+            }
 
 			return nil
 		})
