@@ -8,10 +8,10 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"runtime"
 	"strings"
-        "sync"
-        "runtime"
-        "time"
+	"sync"
+	"time"
 
 	"io/ioutil"
 
@@ -21,6 +21,8 @@ import (
 	"code.google.com/p/go.net/html"
 	"github.com/boltdb/bolt"
 )
+
+const DocLimit = 30
 
 type CountStats struct {
 	DocumentCount, KeywordCount int
@@ -52,11 +54,11 @@ type Keyword struct {
 }
 
 func crawlerCounter() {
-    for true {
-        counter := runtime.NumGoroutine() -2
-        fmt.Printf("Stat: Current Crawling = %d\n", counter);
-        time.Sleep(1 * time.Second)
-    }
+	for true {
+		counter := runtime.NumGoroutine() - 2
+		fmt.Printf("Stat: Current Crawling = %d\n", counter)
+		time.Sleep(1 * time.Second)
+	}
 }
 
 func indexPages(db *bolt.DB, waitingGroup *sync.WaitGroup) int {
@@ -80,7 +82,7 @@ func indexPages(db *bolt.DB, waitingGroup *sync.WaitGroup) int {
 			log.Fatal(err)
 		}
 
-		if countStats.DocumentCount >= 30 {
+		if countStats.DocumentCount >= DocLimit {
 			fmt.Printf("Document Limit %d reached\n", DocLimit)
 
 			status = 1
@@ -106,13 +108,13 @@ func indexPages(db *bolt.DB, waitingGroup *sync.WaitGroup) int {
 			fmt.Printf("uri %s already exists ... ignoring\n", uri)
 			return nil
 		}
-        
-        client := &http.Client{}
-        
-        req, err := http.NewRequest("GET", uri, nil)
-        // ...
-        req.Header.Add("Accept", "text/html,text/plain")
-        resp, err := client.Do(req)
+
+		client := &http.Client{}
+
+		req, err := http.NewRequest("GET", uri, nil)
+		// ...
+		req.Header.Add("Accept", "text/html,text/plain")
+		resp, err := client.Do(req)
 
 		if err != nil {
 			// not removing page as internet is not working ...
@@ -226,10 +228,18 @@ func indexPages(db *bolt.DB, waitingGroup *sync.WaitGroup) int {
 			}
 		}
 
+		lastModified := strings.Trim(resp.Header.Get("Last-Modified"), " ")
+		if len(lastModified) == 0 {
+			lastModified = strings.Trim(resp.Header.Get("Date"), " ")
+		}
+		if len(lastModified) == 0 {
+			lastModified = time.Now().UTC().Format(http.TimeFormat)
+		}
+
 		doc := het.Document{
 			Title:        title,
 			Size:         contentSize,
-			LastModified: strings.Trim(resp.Header.Get("Last-Modified"), " \t\n"),
+			LastModified: lastModified,
 			Keywords:     []het.KeywordRef{},
 			ChildLinks:   links,
 		}
@@ -269,11 +279,11 @@ func indexPages(db *bolt.DB, waitingGroup *sync.WaitGroup) int {
 
 			keywords.Put([]byte(word), kbytes)
 		}
-        
+
 		for _, link := range links {
-            waitingGroup.Add(1)
+			waitingGroup.Add(1)
 			pending.Put([]byte(link), []byte(""))
-            go indexPages(db, waitingGroup)
+			go indexPages(db, waitingGroup)
 		}
 
 		dbytes, _ := json.Marshal(&doc)
@@ -313,7 +323,7 @@ func indexPages(db *bolt.DB, waitingGroup *sync.WaitGroup) int {
 		return 0
 	}
 
-    waitingGroup.Done()
+	waitingGroup.Done()
 	return status
 }
 
@@ -324,8 +334,8 @@ func main() {
 	}
 
 	defer db.Close()
-    
-    var waitingGroup sync.WaitGroup
+
+	var waitingGroup sync.WaitGroup
 
 	stemmer.LoadStopWords()
 
@@ -361,11 +371,11 @@ func main() {
 		if err != nil {
 			return err
 		}
-        
-        pendingCount := pending.Stats().KeyN
+
+		pendingCount := pending.Stats().KeyN
 		if pendingCount == 0 {
 			pending.Put([]byte("http://www.cse.ust.hk"), []byte(""))
-        }
+		}
 
 		fmt.Printf("Created db successfully!\n")
 
@@ -378,26 +388,26 @@ func main() {
 
 	fmt.Printf("Starting to index pending docs ... \n")
 
-    go crawlerCounter()
+	go crawlerCounter()
 
-    err = db.View(func(tx *bolt.Tx) error {
-        
-        pending := tx.Bucket([]byte("pending"))
-        if err != nil {
-            return err
-        }
-        
-        pendingCount := pending.Stats().KeyN
-        fmt.Printf("Initial Pending Index Request: %d\n", pendingCount)
-        waitingGroup.Add(pendingCount)
-        for i := 0; i < pendingCount; i++ {
-            go indexPages(db, &waitingGroup)
-        }
-        
-        return nil
-    })
+	err = db.View(func(tx *bolt.Tx) error {
 
-    waitingGroup.Wait()
-    
-    fmt.Printf("Finish index pending docs ... \n")
+		pending := tx.Bucket([]byte("pending"))
+		if err != nil {
+			return err
+		}
+
+		pendingCount := pending.Stats().KeyN
+		fmt.Printf("Initial Pending Index Request: %d\n", pendingCount)
+		waitingGroup.Add(pendingCount)
+		for i := 0; i < pendingCount; i++ {
+			go indexPages(db, &waitingGroup)
+		}
+
+		return nil
+	})
+
+	waitingGroup.Wait()
+
+	fmt.Printf("Finish index pending docs ... \n")
 }
