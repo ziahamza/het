@@ -19,6 +19,8 @@ import (
 	"github.com/boltdb/bolt"
 )
 
+const DocLimit = 30
+
 func indexPages(db *bolt.DB) int {
 	status := 0
 	err := db.Update(func(tx *bolt.Tx) error {
@@ -38,6 +40,13 @@ func indexPages(db *bolt.DB) int {
 		err := json.Unmarshal(cbytes, &countStats)
 		if err != nil {
 			log.Fatal(err)
+		}
+
+		if countStats.DocumentCount >= 30 {
+			fmt.Printf("Document Limit %d reached\n", DocLimit)
+
+			status = 1
+			return nil
 		}
 
 		ubytes, _ := pending.Cursor().First()
