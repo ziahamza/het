@@ -34,7 +34,9 @@ func main() {
 			doc := het.Document{}
 			json.Unmarshal(v, &doc)
 
-			fmt.Fprintf(resultFile, "%s \n %s \nSize: %d", doc.Title, k, doc.Size)
+			fmt.Fprintf(resultFile, "%s\n", doc.Title)
+			fmt.Fprintf(resultFile, "%s\n", k)
+			fmt.Fprintf(resultFile, "Size: %d", doc.Size)
 
 			if len(doc.LastModified) > 0 {
 				resultFile.WriteString(" - " + doc.LastModified)
