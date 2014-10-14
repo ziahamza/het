@@ -80,6 +80,13 @@ func indexPages(db *bolt.DB, waitingGroup *sync.WaitGroup) int {
 			log.Fatal(err)
 		}
 
+		if countStats.DocumentCount >= 30 {
+			fmt.Printf("Document Limit %d reached\n", DocLimit)
+
+			status = 1
+			return nil
+		}
+
 		ubytes, _ := pending.Cursor().First()
 		if ubytes == nil {
 			fmt.Printf("no pending doc to index ... \n")
