@@ -36,12 +36,11 @@ func main() {
 
 			fmt.Fprintf(resultFile, "%s\n", doc.Title)
 			fmt.Fprintf(resultFile, "%s\n", k)
-			fmt.Fprintf(resultFile, "Size: %d", doc.Size)
+			fmt.Fprintf(resultFile, "%s, %d", doc.LastModified, doc.Size)
 
-			if len(doc.LastModified) > 0 {
-				resultFile.WriteString(" - " + doc.LastModified)
-			}
 			resultFile.WriteString("\n")
+            
+            for _, chile :
 
 			sort.Sort(doc.Keywords)
 
