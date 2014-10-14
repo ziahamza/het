@@ -12,11 +12,12 @@ import (
 var stopWords map[string]bool
 
 func StemWord(word string) string {
-	if stopWords[word] {
+	stem := porterstemmer.StemString(word)
+	if stopWords[stem] || len(stem) == 0 {
 		return ""
-	} else {
-		return porterstemmer.StemString(word)
 	}
+
+	return stem
 }
 func RefineQuery(query string) []string {
 	keywords := strings.Split(query, " ")
