@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,8 @@ import (
         "sync"
         "runtime"
         "time"
+
+	"io/ioutil"
 
 	"../het"
 	"../stemmer"
@@ -135,7 +138,15 @@ func indexPages(db *bolt.DB, waitingGroup *sync.WaitGroup) int {
 			return nil
 		}
 
-		htmlRoot, err := html.Parse(resp.Body)
+		buff, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			fmt.Printf("cannot read all of html body\n")
+			return nil
+		}
+
+		contentSize := len(buff)
+
+		htmlRoot, err := html.Parse(bytes.NewReader(buff))
 		if err != nil {
 			fmt.Printf("got back error parsing html ... ignoring\n")
 			return nil
@@ -200,30 +211,27 @@ func indexPages(db *bolt.DB, waitingGroup *sync.WaitGroup) int {
 
 		body := strings.Join(text, "")
 
-		tokens := strings.Split(body, "\n")
-
 		wordCount := make(map[string]int)
-		for _, token := range tokens {
-			wordLine := strings.TrimSpace(token)
-			wordLine = strings.Replace(wordLine, "\t", " ", -1)
-			words := strings.Split(wordLine, " ")
-			for _, word := range words {
-				word = stemmer.StemWord(word)
-				if word != "" {
-					wordCount[word] = wordCount[word] + 1
-				}
+		for _, token := range strings.Fields(body) {
+			word := stemmer.StemWord(token)
+			if len(word) > 0 {
+				wordCount[word] = wordCount[word] + 1
 			}
-
 		}
 
 		doc := het.Document{
 			Title:        title,
-			Size:         len(text),
-			LastModified: resp.Header.Get("Last-Modified"),
+			Size:         contentSize,
+			LastModified: strings.Trim(resp.Header.Get("Last-Modified"), " \t\n"),
 			Keywords:     []het.KeywordRef{},
+			ChildLinks:   links,
 		}
 
 		for word := range wordCount {
+			if wordCount[word] == 0 {
+				continue
+			}
+
 			doc.Keywords = append(doc.Keywords, het.KeywordRef{
 				Word:      word,
 				Frequency: wordCount[word],
