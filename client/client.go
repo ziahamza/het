@@ -36,7 +36,7 @@ func main() {
 
 			fmt.Fprintf(resultFile, "%s \n %s \nSize: %d", doc.Title, k, doc.Size)
 
-			if len(doc.LastModified) >= 0 {
+			if len(doc.LastModified) > 0 {
 				resultFile.WriteString(" - " + doc.LastModified)
 			}
 			resultFile.WriteString("\n")
