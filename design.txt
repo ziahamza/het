@@ -1,0 +1,70 @@
+HET - A Fast Reliable Search Engine that never fails to surprise its users
+==========================================================================
+
+The entire project is build using the Go Language. Following the code structure for the project:
+	-> client/*
+	   --------
+	   Contains the program to lookup the documents stored in the inverted index file (index.db) and then
+	   prints them in a nice readable format. It displays all the keywords in frequency sorted order, and
+	   prints Last Modified header if available.
+
+	-> indexer/*
+	   ---------
+	   Contains the actual spider and indexer logic. Creates the index.db file, along with the spider that
+	   crawls the webpages. It uses the GoLang internal html package to get the links inside the page along
+	   with the tile and the keywords. The html parser is smart enough for bad html content and filters out
+	   documents with a different mimetype from html docs.
+
+	   It calculates the size of the webpage by inspecting the Content-Length of the webpage. This does not
+	   work when HTTP Chunked encoding is used, in which case it will count the bytes returned by the server.
+
+	   Indexer understands redirects in a smart way and keep tracks of them in the database.
+
+	-> het/*
+	   -----
+	   Contains the codebase shared between the indexer and the client. Contains the types used to serialize the
+	   data in the index.db, along with utilities to sort the data.
+
+
+	-> stemmer/*
+	   ---------
+	   Contains the code to handle the Stemming of words and other utilities. It uses third party stemming
+	   library for GoLang very much like the Java counterpart
+
+	-> index.db
+	   --------
+	   The inverted index DB file to store all of the URL's, Keywords and statistics in separate tables.
+	   The database used in this project is Bolt DB, which is a very fast Key Value store for GoLang.
+
+	-> tests/*
+	   -------
+	   Contains test programs for debugging and testing the project.
+
+Database
+--------
+The database used in this project is Bolt DB. Currently, the indexer create the following tables to index the
+data.
+	1- Pending
+	   Used to store the documents that are still not indexed. This table is especially usefull to enable users
+	   to restart the indexing process. Most of the links found on the webpage are first stored in the pending
+	   table and then later removed when they are indexed.
+
+
+	2- Docs
+	   Contains the docs that have actually been indexed. It contians JSON encoded objects with the following
+	   structure:
+
+			Title        string
+			LastModified string
+			Size         int
+			Keywords     KeywordList
+			ChildLinks   []string       (children links conained in the webpage)
+
+		KeywordList is defined as a list of the following structure. It contains the list of keywords along
+		with their frequencies.
+
+			Word      string
+			Frequency int
+
+	3- Keywords
+	4- Stats
