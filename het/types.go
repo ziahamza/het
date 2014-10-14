@@ -29,6 +29,7 @@ type Document struct {
 	LastModified string
 	Size         int
 	Keywords     KeywordList
+	ChildLinks   []string
 }
 
 // stored in keywords bucket

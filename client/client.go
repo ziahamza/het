@@ -24,7 +24,7 @@ func main() {
 		fmt.Printf("creating db ... \n")
 		docs := tx.Bucket([]byte("docs"))
 
-		resultFile, err := os.OpenFile("../spider_result.txt", os.O_WRONLY|os.O_CREATE, 0666)
+		resultFile, err := os.Create("../spider_result.txt")
 		if err != nil {
 			log.Fatal(err)
 			return nil
@@ -34,9 +34,12 @@ func main() {
 			doc := het.Document{}
 			json.Unmarshal(v, &doc)
 
-			resultFile.WriteString(doc.Title + "\n")
-			resultFile.WriteString(string(k) + "\n")
-			resultFile.WriteString("Last Modified: " + doc.LastModified + "\n")
+			fmt.Fprintf(resultFile, "%s \n %s \nSize: %d", doc.Title, k, doc.Size)
+
+			if len(doc.LastModified) >= 0 {
+				resultFile.WriteString(" - " + doc.LastModified)
+			}
+			resultFile.WriteString("\n")
 
 			sort.Sort(doc.Keywords)
 
