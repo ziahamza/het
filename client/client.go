@@ -13,7 +13,7 @@ import (
 )
 
 func main() {
-	db, err := bolt.Open("./index.db", 0600, nil)
+	db, err := bolt.Open("../index.db", 0600, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -24,7 +24,7 @@ func main() {
 		fmt.Printf("creating db ... \n")
 		docs := tx.Bucket([]byte("docs"))
 
-		resultFile, err := os.Create("./spider_result.txt")
+		resultFile, err := os.Create("../spider_result.txt")
 		if err != nil {
 			log.Fatal(err)
 			return nil

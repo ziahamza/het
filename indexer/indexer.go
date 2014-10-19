@@ -328,7 +328,7 @@ func indexPages(db *bolt.DB, waitingGroup *sync.WaitGroup) int {
 }
 
 func main() {
-	db, err := bolt.Open("./index.db", 0600, nil)
+	db, err := bolt.Open("../index.db", 0600, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
