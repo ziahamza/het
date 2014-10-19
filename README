@@ -1,0 +1,5 @@
+First run the indexer to fill the DB (index.db) with webpages. The indexer has been compiled in indexer, and to run the indexer use the command:
+./indexer/indexer_{darwin or linux or windows}_{amd64 or i386}
+
+Then run the client to make a spider_result.txt. To run the client, run the follows:
+./client/client_{darwin or linux or windows}_{amd64 or i386}
