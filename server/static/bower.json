@@ -1,0 +1,16 @@
+{
+  "name": "het",
+  "version": "0.0.0",
+  "authors": [
+    "hamza zia <ziahamza2007@gmail.com>"
+  ],
+  "description": "Next Gen Search Engine",
+  "private": true,
+  "ignore": [
+    "node_modules",
+    "bower_components"
+  ],
+  "dependencies": {
+    "react": "~0.12.0"
+  }
+}
