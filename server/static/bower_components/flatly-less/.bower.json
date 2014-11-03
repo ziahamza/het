@@ -1,0 +1,35 @@
+{
+  "name": "bower-bootswatch-flatly",
+  "version": "2.3.2",
+  "main": "less/flatly.less",
+  "keywords": [
+    "flatly",
+    "bootstrap",
+    "twitter",
+    "bootswatch",
+    "less",
+    "css",
+    "flat",
+    "ui",
+    "theme"
+  ],
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "components"
+  ],
+  "dependencies": {
+    "bootstrap-less": "2.3.2"
+  },
+  "homepage": "https://github.com/jozefizso/bower-bootswatch-flatly",
+  "_release": "2.3.2",
+  "_resolution": {
+    "type": "version",
+    "tag": "2.3.2",
+    "commit": "928904454736cc12f9246629df00db9469d81e52"
+  },
+  "_source": "git://github.com/jozefizso/bower-bootswatch-flatly.git",
+  "_target": "~2.3.2",
+  "_originalSource": "flatly-less",
+  "_direct": true
+}
