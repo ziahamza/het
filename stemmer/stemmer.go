@@ -32,9 +32,9 @@ func RefineQuery(query string) []string {
 	return keywords
 }
 
-func LoadStopWords() {
+func LoadStopWords(path string) {
 	stopWords = map[string]bool{}
-	fileData, err := ioutil.ReadFile("../stopwords.txt")
+	fileData, err := ioutil.ReadFile(path)
 	if err != nil {
 		log.Fatal(err)
 	}

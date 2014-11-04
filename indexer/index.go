@@ -1,4 +1,4 @@
-package main
+package indexer
 
 import (
 	"bytes"
@@ -12,17 +12,15 @@ import (
 
 	"io/ioutil"
 
-	"../het"
-	"../stemmer"
+	"search/het"
+	"search/stemmer"
 
 	"code.google.com/p/go.net/html"
 	"github.com/boltdb/bolt"
 )
 
-const DocLimit = 30
-
-func indexPages(db *bolt.DB) int {
-	status := 0
+func CrawlPage(db *bolt.DB) (het.CountStats, error) {
+	countStats := het.CountStats{}
 	err := db.Update(func(tx *bolt.Tx) error {
 		fmt.Println("Indexing pages ...")
 
@@ -36,26 +34,17 @@ func indexPages(db *bolt.DB) int {
 			log.Fatal(errors.New("Count Statistics not found in the db!"))
 		}
 
-		countStats := het.CountStats{}
 		err := json.Unmarshal(cbytes, &countStats)
 		if err != nil {
 			log.Fatal(err)
-		}
-
-		if countStats.DocumentCount >= 30 {
-			fmt.Printf("Document Limit %d reached\n", DocLimit)
-
-			status = 1
-			return nil
 		}
 
 		ubytes, _ := pending.Cursor().First()
 		if ubytes == nil {
 			fmt.Printf("no pending doc to index ... \n")
 
-			// status one means finished
-			status = 1
-			return nil
+			// status one means finished, we saturated the internet
+			return errors.New("Somehow saturated the entire internet ?!!")
 		}
 
 		uri := string(ubytes[:])
@@ -128,6 +117,7 @@ func indexPages(db *bolt.DB) int {
 						if a.Key == "href" {
 							child, err := parent.Parse(a.Val)
 							if err == nil && (child.Scheme == "http" || child.Scheme == "https") {
+
 								links = append(links, child.String())
 							} else {
 								fmt.Printf("got back error parsing %s\n", a.Val)
@@ -229,6 +219,7 @@ func indexPages(db *bolt.DB) int {
 
 		docs.Put(ubytes, dbytes)
 		if parentUri != uri {
+			// it was a redirect .. put the parent uri anyways so we never download it
 			docs.Put([]byte(parentUri), dbytes)
 		}
 
@@ -252,81 +243,8 @@ func indexPages(db *bolt.DB) int {
 		fmt.Printf("Documents Left    : %d \n", countStats.PendingCount)
 		fmt.Printf("Keywords Indexed  : %d \n", countStats.KeywordCount)
 
-		status = 0
-
 		return nil
 	})
 
-	if err != nil {
-		fmt.Printf("Got back an error indexing page: %s \n", err.Error())
-		return 0
-	}
-
-	return status
-}
-
-func main() {
-	db, err := bolt.Open("../index.db", 0600, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	defer db.Close()
-
-	stemmer.LoadStopWords()
-
-	err = db.Update(func(tx *bolt.Tx) error {
-		fmt.Printf("creating db ... \n")
-		docs, err := tx.CreateBucketIfNotExists([]byte("docs"))
-		if err != nil {
-			return err
-		}
-
-		_, err = tx.CreateBucketIfNotExists([]byte("keywords"))
-		if err != nil {
-			return err
-		}
-
-		stats, err := tx.CreateBucketIfNotExists([]byte("stats"))
-		if err != nil {
-			return err
-		}
-
-		sbytes := stats.Get([]byte("count"))
-		if sbytes == nil {
-			stat := het.CountStats{DocumentCount: 0, KeywordCount: 0}
-			sbytes, err = json.Marshal(&stat)
-			if err != nil {
-				return err
-			}
-
-			stats.Put([]byte("count"), sbytes)
-		}
-
-		pending, err := tx.CreateBucketIfNotExists([]byte("pending"))
-		if err != nil {
-			return err
-		}
-
-		dbytes, _ := docs.Cursor().First()
-
-		if dbytes == nil {
-			pending.Put([]byte("http://www.cse.ust.hk"), []byte(""))
-		}
-
-		fmt.Printf("Created db successfully!\n")
-
-		return nil
-	})
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Printf("Starting to index pending docs ... \n")
-
-	for indexPages(db) == 0 {
-	}
-
-	fmt.Println("finishing off indexing ... ")
+	return countStats, err
 }
