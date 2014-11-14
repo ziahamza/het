@@ -45,7 +45,9 @@
 		var searchButton = $('#search-button');
 		var searchText = $('#searchtext');
 
-		searchButton.on('click', function() {
+		var searchBox = $('.searchbox');
+		searchBox.on('submit', function(ev) {
+			ev.preventDefault();
 
 			$('.searchbox').animate({ marginTop: '5%' }, 400, 'easeInCirc', function() {
 				console.log('animation finished!');

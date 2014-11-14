@@ -21,7 +21,6 @@ func main() {
 	defer db.Close()
 
 	err = db.Update(func(tx *bolt.Tx) error {
-		fmt.Printf("creating db ... \n")
 		docs := tx.Bucket([]byte("docs"))
 
 		resultFile, err := os.Create("../spider_result.txt")

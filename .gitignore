@@ -1,2 +1,5 @@
 index.db
 spider_result.txt
+*.exe
+engine
+search
