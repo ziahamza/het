@@ -26,6 +26,9 @@ func CrawlPage(db *bolt.DB) (het.CountStats, error) {
 
 		pending := tx.Bucket([]byte("pending"))
 		docs := tx.Bucket([]byte("docs"))
+		docKeywords := tx.Bucket([]byte("doc-keywords"))
+		docLinks := tx.Bucket([]byte("doc-links"))
+
 		keywords := tx.Bucket([]byte("keywords"))
 		stats := tx.Bucket([]byte("stats"))
 
@@ -47,31 +50,32 @@ func CrawlPage(db *bolt.DB) (het.CountStats, error) {
 			return errors.New("Somehow saturated the entire internet ?!!")
 		}
 
-		uri := string(ubytes[:])
+		uri, _ := url.Parse(string(ubytes[:]))
+		uri.Fragment = ""
 
 		// delete the url from pending
 		pending.Delete(ubytes)
 
 		// original uri already indexed
-		if docs.Get(ubytes) != nil {
-			fmt.Printf("uri %s already exists ... ignoring\n", uri)
+		if docs.Get([]byte(uri.String())) != nil {
+			fmt.Printf("uri %s already exists ... ignoring\n", uri.String())
 			return nil
 		}
 
-		resp, err := http.Get(uri)
+		resp, err := http.Get(uri.String())
 		if err != nil {
 			// not removing page as internet is not working ...
 			fmt.Printf("Error getting back a page (%s) ... waiting 2 sec \n", err.Error())
 
 			// add the page back to pending to try again
-			pending.Put(ubytes, []byte(""))
+			pending.Put([]byte(uri.String()), []byte(""))
 			return nil
 		}
 
 		defer resp.Body.Close()
 
 		if resp.StatusCode < 200 || resp.StatusCode >= 299 {
-			fmt.Printf("page %s not found \n", uri)
+			fmt.Printf("page %s not found \n", uri.String)
 			return nil
 		}
 
@@ -82,11 +86,15 @@ func CrawlPage(db *bolt.DB) (het.CountStats, error) {
 		}
 
 		parent, _ := url.Parse(resp.Request.URL.String())
+
+		// Optimisation: remove any hash fragments from the url
+		parent.Fragment = ""
+
 		parentUri := parent.String()
 
 		// if the new redirected uri already indexed
-		if parentUri != uri && docs.Get([]byte(parentUri)) != nil {
-			fmt.Printf("uri %s already exists ... ignoring\n", uri)
+		if parentUri != uri.String() && docs.Get([]byte(parentUri)) != nil {
+			fmt.Printf("uri %s already exists ... ignoring\n", uri.String())
 			return nil
 		}
 
@@ -117,6 +125,7 @@ func CrawlPage(db *bolt.DB) (het.CountStats, error) {
 						if a.Key == "href" {
 							child, err := parent.Parse(a.Val)
 							if err == nil && (child.Scheme == "http" || child.Scheme == "https") {
+								child.Fragment = ""
 
 								links = append(links, child.String())
 							} else {
@@ -166,12 +175,11 @@ func CrawlPage(db *bolt.DB) (het.CountStats, error) {
 			}
 		}
 
+		dockeys := []het.KeywordRef{}
 		doc := het.Document{
 			Title:        title,
 			Size:         contentSize,
 			LastModified: strings.Trim(resp.Header.Get("Last-Modified"), " \t\n"),
-			Keywords:     []het.KeywordRef{},
-			ChildLinks:   links,
 		}
 
 		for word := range wordCount {
@@ -179,7 +187,7 @@ func CrawlPage(db *bolt.DB) (het.CountStats, error) {
 				continue
 			}
 
-			doc.Keywords = append(doc.Keywords, het.KeywordRef{
+			dockeys = append(dockeys, het.KeywordRef{
 				Word:      word,
 				Frequency: wordCount[word],
 			})
@@ -201,7 +209,7 @@ func CrawlPage(db *bolt.DB) (het.CountStats, error) {
 			keyword.Frequency = keyword.Frequency + wordCount[word]
 
 			keyword.Docs = append(keyword.Docs, het.DocumentRef{
-				URL:       uri,
+				URL:       uri.String(),
 				Frequency: wordCount[word],
 			})
 
@@ -216,11 +224,18 @@ func CrawlPage(db *bolt.DB) (het.CountStats, error) {
 		}
 
 		dbytes, _ := json.Marshal(&doc)
+		kbytes, _ := json.Marshal(&dockeys)
+		lbytes, _ := json.Marshal(&links)
 
-		docs.Put(ubytes, dbytes)
-		if parentUri != uri {
+		docs.Put([]byte(uri.String()), dbytes)
+		docKeywords.Put([]byte(uri.String()), kbytes)
+		docLinks.Put([]byte(uri.String()), lbytes)
+
+		if parentUri != uri.String() {
 			// it was a redirect .. put the parent uri anyways so we never download it
 			docs.Put([]byte(parentUri), dbytes)
+			docKeywords.Put([]byte(parentUri), kbytes)
+			docLinks.Put([]byte(parentUri), lbytes)
 		}
 
 		countStats.DocumentCount = countStats.DocumentCount + 1

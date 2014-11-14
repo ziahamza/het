@@ -4,9 +4,9 @@
 
 	<script src="bower_components/jquery/dist/jquery.js"></script>
 	<script src="//cdnjs.cloudflare.com/ajax/libs/jquery-easing/1.3/jquery.easing.min.js"></script>
+
+	<!-- http://bootswatch.com/paper/ -->
 	<script src="bootstrap/js/bootstrap.js"></script>
-
-
 	<link rel="stylesheet" href="bootstrap/css/paper-theme.css">
 
 	<style>
@@ -15,6 +15,15 @@
 		}
 		.searchbox {
 			margin-top: 30%;
+			margin-bottom: 50px;
+		}
+
+		.results {
+			text-align: left;
+		}
+
+		.middle {
+			text-align: left;
 			margin-left: auto;
 			margin-right: auto;
 
@@ -31,13 +40,23 @@
 <body>
 
     <div class="container">
-		<form class="searchbox">
+		<form class="searchbox middle">
 			<input type="text" class="form-control input-lg" placeholder="Search" id="searchtext">
 
-			<button type="submit" class="btn btn-info" id="search-button">
+			<button eype="submit" class="btn btn-info" id="search-button">
 				<span class="glyphicon glyphicon-search"></span>
 			</button>
 		</form>
+
+		<div class="middle results">
+			<!--
+			<blockquote>
+				<b> Big Link Title </b>
+				<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer posuere erat a ante.</p>
+				<small>Someone famous in <cite title="Source Title">Source Title</cite></small>
+			</blockquote>
+			-->
+		</div>
 
     </div>
 
@@ -46,11 +65,30 @@
 		var searchText = $('#searchtext');
 
 		var searchBox = $('.searchbox');
+		var results = $('.results');
+
+		var createEntry = function(doc) {
+			var title = $('<b/>').text(doc.Title);
+			var url = $('<small/>').text(doc.URL);
+			return $('<blockquote/>').append(title).append(url)
+		};
+
 		searchBox.on('submit', function(ev) {
 			ev.preventDefault();
 
+			results.html('');
+
 			$('.searchbox').animate({ marginTop: '5%' }, 400, 'easeInCirc', function() {
 				console.log('animation finished!');
+			});
+
+			$.get("/search", { query: searchText.val() }).done(function(response) {
+				console.log('got back search response:', response);
+				if (response.success) {
+					var elems = response.results.map(createEntry)
+					console.log('adding elems:', elems);
+					results.append(elems);
+				}
 			});
 		});
 	</script>

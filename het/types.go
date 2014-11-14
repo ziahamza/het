@@ -16,21 +16,22 @@ type DocumentRef struct {
 	Frequency int
 }
 
-// made a new type to sort out the data
-type KeywordList []KeywordRef
-
-func (a KeywordList) Len() int           { return len(a) }
-func (a KeywordList) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a KeywordList) Less(i, j int) bool { return a[i].Frequency >= a[j].Frequency }
-
 // stored in docs bucket
 type Document struct {
 	Title        string
 	LastModified string
 	Size         int
-	Keywords     KeywordList
-	ChildLinks   []string
 }
+
+// stored in buucket doc-links
+type DocLinks []string
+
+// stored in bucket doc-keywords mapped by the doc url
+type DocKeywords []KeywordRef
+
+func (a DocKeywords) Len() int           { return len(a) }
+func (a DocKeywords) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a DocKeywords) Less(i, j int) bool { return a[i].Frequency >= a[j].Frequency }
 
 // stored in keywords bucket
 type Keyword struct {

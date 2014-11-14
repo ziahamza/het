@@ -50,6 +50,16 @@ func main() {
 			return err
 		}
 
+		_, err = tx.CreateBucketIfNotExists([]byte("doc-keywords"))
+		if err != nil {
+			return err
+		}
+
+		_, err = tx.CreateBucketIfNotExists([]byte("doc-links"))
+		if err != nil {
+			return err
+		}
+
 		_, err = tx.CreateBucketIfNotExists([]byte("keywords"))
 		if err != nil {
 			return err

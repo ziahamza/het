@@ -2,6 +2,7 @@ package indexer
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -29,9 +30,12 @@ func Search(db *bolt.DB, query string) ([]SearchResult, error) {
 
 	err := db.View(func(tx *bolt.Tx) error {
 		keywords := tx.Bucket([]byte("keywords"))
+		docs := tx.Bucket([]byte("docs"))
 
-		docs := make(map[string]struct {
+		// indexes to sort out data
+		docRanks := make(map[string]struct {
 			keywords map[string]int
+			doc      het.Document
 		})
 
 		keyword := het.Keyword{}
@@ -44,26 +48,32 @@ func Search(db *bolt.DB, query string) ([]SearchResult, error) {
 				fmt.Printf("Found index for word: '%s' with docs: %d \n", word, len(keyword.Docs))
 
 				for _, ref := range keyword.Docs {
-					doc, found := docs[ref.URL]
+					rank, found := docRanks[ref.URL]
 
 					if !found {
-						doc.keywords = map[string]int{}
+						rank.keywords = map[string]int{}
+						dbytes := docs.Get([]byte(ref.URL))
+						if dbytes == nil {
+							return errors.New("Document not found in the main index, but in keyword index!")
+						}
+
+						json.Unmarshal(dbytes, &rank.doc)
 					}
 
-					doc.keywords[word] = ref.Frequency
+					rank.keywords[word] = ref.Frequency
 
-					docs[ref.URL] = doc
+					docRanks[ref.URL] = rank
 				}
 			} else {
 				fmt.Printf("Cannot find index for keyword: %s\n", word)
 			}
 		}
 
-		for url, _ := range docs {
+		for url, rank := range docRanks {
 			results = append(results, SearchResult{
-				Title: "",
+				Title: rank.doc.Title,
 				URL:   url,
-				Size:  0,
+				Size:  rank.doc.Size,
 			})
 		}
 
