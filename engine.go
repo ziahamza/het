@@ -21,7 +21,7 @@ func main() {
 
 	dbpath := flag.String("db", "./index.db", "Path to the local db used for indexing and searching.")
 	stopwordspath := flag.String("stopwords", "./stopwords.txt", "Path to the stop words used to filter out common words")
-	indexLimit := flag.Int("index", 150, "Pages to Index first before starting the local server")
+	indexLimit := flag.Int("index", 300, "Pages to Index first before starting the local server")
 	listen := flag.String("port", ":8080", "Port and host for api server to listen on")
 	drop := flag.Bool("drop", false, "Set to reset DB and then fill the DB with the pages specified by index")
 
@@ -89,7 +89,7 @@ func main() {
 		dbytes, _ := docs.Cursor().First()
 
 		if dbytes == nil {
-			pending.Put([]byte("http://www.cse.ust.hk"), []byte(""))
+			pending.Put([]byte("http://www.cse.ust.hk/~ericzhao/COMP4321/TestPages/testpage.htm"), []byte(""))
 		}
 
 		fmt.Printf("Created db successfully!\n")

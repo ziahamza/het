@@ -13,7 +13,6 @@ import (
 	"io/ioutil"
 
 	"search/het"
-	"search/stemmer"
 
 	"code.google.com/p/go.net/html"
 	"github.com/boltdb/bolt"
@@ -46,6 +45,8 @@ func CrawlPage(db *bolt.DB) (het.CountStats, error) {
 		if ubytes == nil {
 			fmt.Printf("no pending doc to index ... \n")
 
+			pending.Put([]byte("http://en.wikipedia.org/wiki/List_of_most_popular_websites"), []byte(""))
+
 			// status one means finished, we saturated the internet
 			return errors.New("Somehow saturated the entire internet ?!!")
 		}
@@ -58,7 +59,7 @@ func CrawlPage(db *bolt.DB) (het.CountStats, error) {
 
 		// original uri already indexed
 		if docs.Get([]byte(uri.String())) != nil {
-			fmt.Printf("uri %s already exists ... ignoring\n", uri.String())
+			// fmt.Printf("uri %s already exists ... ignoring\n", uri.String())
 			return nil
 		}
 
@@ -167,18 +168,13 @@ func CrawlPage(db *bolt.DB) (het.CountStats, error) {
 
 		body := strings.Join(text, "")
 
-		wordCount := make(map[string]int)
-		for _, token := range strings.Fields(body) {
-			word := stemmer.StemWord(token)
-			if len(word) > 0 {
-				wordCount[word] = wordCount[word] + 1
-			}
-		}
+		wordCount, length := GetVector(body)
 
 		dockeys := []het.KeywordRef{}
 		doc := het.Document{
 			Title:        title,
 			Size:         contentSize,
+			Length:       length,
 			LastModified: strings.Trim(resp.Header.Get("Last-Modified"), " \t\n"),
 		}
 

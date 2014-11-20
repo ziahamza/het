@@ -30,7 +30,6 @@
 			width: 90%;
 		}
 		#searchtext {
-			padding: 20px;
 			width: 80%;
 			background: white;
 			display: inline;
@@ -41,7 +40,7 @@
 
     <div class="container">
 		<form class="searchbox middle">
-			<input type="text" class="form-control input-lg" placeholder="Search" id="searchtext">
+			<input type="text" class="form-control input-lg" placeholder="Search" id="searchtext" autocomplete="off" >
 
 			<button eype="submit" class="btn btn-info" id="search-button">
 				<span class="glyphicon glyphicon-search"></span>
@@ -68,7 +67,7 @@
 		var results = $('.results');
 
 		var createEntry = function(doc) {
-			var title = $('<b/>').text(doc.Title);
+			var title = $('<b/>').text(doc.Title + '-' + doc.Rank);
 			var url = $('<small/>').text(doc.URL);
 			return $('<blockquote/>').append(title).append(url)
 		};
@@ -86,8 +85,12 @@
 				console.log('got back search response:', response);
 				if (response.success) {
 					var elems = response.results.map(createEntry)
-					console.log('adding elems:', elems);
-					results.append(elems);
+					if (elems.length) {
+						results.append(elems);
+					}
+					else {
+						results.append('<b>No result found. Try a more general query.</b>');
+					}
 				}
 			});
 		});

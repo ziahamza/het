@@ -20,6 +20,7 @@ type DocumentRef struct {
 type Document struct {
 	Title        string
 	LastModified string
+	Length       float64 // normalized length based on word vector
 	Size         int
 }
 
