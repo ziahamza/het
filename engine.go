@@ -152,7 +152,7 @@ func main() {
 			return
 		}
 
-		wr.WriteHeader(202)
+		wr.WriteHeader(200)
 		wr.Write([]byte(bd))
 	}
 

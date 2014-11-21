@@ -4,6 +4,7 @@
 
 	<script src="bower_components/jquery/dist/jquery.js"></script>
 	<script src="//cdnjs.cloudflare.com/ajax/libs/jquery-easing/1.3/jquery.easing.min.js"></script>
+	<script src="//cdnjs.cloudflare.com/ajax/libs/bacon.js/0.7.33/Bacon.js"></script>
 
 	<!-- http://bootswatch.com/paper/ -->
 	<script src="bootstrap/js/bootstrap.js"></script>
@@ -60,11 +61,34 @@
     </div>
 
 	<script>
-		var searchButton = $('#search-button');
-		var searchText = $('#searchtext');
+		var getSearchResults = function(query) {
+			return new Promise(function(resolve, reject) {
+				var req = new XMLHttpRequest();
+				req.open('GET', '/search?query=' + query);
+				req.onload = function(res) {
+					if (req.status == 200) {
+						var obj = null;
+						try {
+							obj = JSON.parse(req.response);
+						}
+						catch(ex) { return reject(err) };
 
-		var searchBox = $('.searchbox');
-		var results = $('.results');
+						if (!obj.success) {
+							return reject(Error(obj.message));
+						}
+
+						resolve(obj.results);
+					} else {
+						reject(Error("Server not responding properly:" + req.status))
+					}
+				};
+				req.onerror = function() {
+					reject(Error("Server unavailable."))
+				};
+
+				req.send();
+			});
+		};
 
 		var createEntry = function(doc) {
 			var title = $('<b/>').text(doc.Title + '-' + doc.Rank);
@@ -72,27 +96,82 @@
 			return $('<blockquote/>').append(title).append(url)
 		};
 
+		var displayResults = function(results) {
+			var rootElem = $('.results');
+			rootElem.html('');
+
+			console.log('got back search response:', results);
+			var elems = results.map(createEntry)
+			if (elems.length) {
+				rootElem.append(elems);
+			}
+			else {
+				rootElem.append('<b>No result found. Try a more general query.</b>');
+			}
+
+			$('#search-button').prop('disabled', false);
+		};
+
+		var searchText = $('#searchtext');
+		var searchBox = $('.searchbox');
+
+		var text = searchText.asEventStream('keydown')
+		.debounce(300)
+		.map(function(ev) {
+			return ev.target.value;
+		});
+
+		var suggestions = text.flatMapLatest(function(query) {
+			if (query.length < 3) {
+				return Bacon.once([]);
+			}
+
+			console.log('got back query:', query);
+
+			return Bacon.fromPromise(getSearchResults(query));
+		});
+
+		var first = false;
+
+		text.awaiting(suggestions).onValue(function(x) {
+			if (x) {
+				if (!first) {
+					$('.searchbox').animate({
+						marginTop: '5%'
+					}, 400, 'easeInCirc', function() {
+						console.log('animation finished!');
+					});
+
+					first = true;
+
+					return;
+				}
+
+				$('#search-button').prop('disabled', true);
+				$('.results').html('Searching ... ');
+			}
+		});
+
+		suggestions.onValue(function(results) {
+			displayResults(results);
+		});
+
+		var searchButton = $('#search-button');
+
 		searchBox.on('submit', function(ev) {
 			ev.preventDefault();
 
-			results.html('');
+			if (!first) {
+				$('.searchbox').animate({
+					marginTop: '5%'
+				}, 400, 'easeInCirc', function() {
+					console.log('animation finished!');
+				});
 
-			$('.searchbox').animate({ marginTop: '5%' }, 400, 'easeInCirc', function() {
-				console.log('animation finished!');
-			});
+				first = true;
 
-			$.get("/search", { query: searchText.val() }).done(function(response) {
-				console.log('got back search response:', response);
-				if (response.success) {
-					var elems = response.results.map(createEntry)
-					if (elems.length) {
-						results.append(elems);
-					}
-					else {
-						results.append('<b>No result found. Try a more general query.</b>');
-					}
-				}
-			});
+				return;
+			}
 		});
 	</script>
 </body>
