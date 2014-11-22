@@ -89,19 +89,62 @@ var SearchApp = React.createClass({
 		}
 		else if (this.state.results.length) {
 			results = this.state.results.map(function(r) {
+				var lastModified = new Date(r.Link.LastModified);
 				return React.createElement('div', {
 					className: 'result panel panel-default'
 				},
 					React.createElement('div', {
 						className: 'panel-heading'
 					},
-						React.createElement('a', {className: 'link'}, r.Doc.Title),
-						React.createElement('small', {className: 'text-muted'}, ' - ' + r.Link.LastModified)
+						React.createElement('a', {
+							href: r.URL,
+							target: "_blank",
+							className: 'link'
+						}, r.Doc.Title),
+						React.createElement('small', {
+							className: 'text-muted'
+						}, ' - ' + r.URL)
 					),
 
 					React.createElement('div', {
 						className: 'panel-body'
-					}, r.URL)
+					},
+						React.createElement('h6', null, 'Keywords'),
+						React.createElement('ul', {
+							className: 'nav nav-pills'
+						}, r.Keywords.map(function(k) {
+							return React.createElement('li', {className: 'keyword'},
+								React.createElement('a', null, k.Word,
+									React.createElement('span', {className: 'badge'}, k.Frequency)
+								)
+							)
+						})),
+
+						React.createElement('hr', null),
+
+						React.createElement('h6', null, 'Outgoing'),
+						React.createElement('ul', null, Object.keys(r.Link.Outgoing).map(function(l) {
+							return React.createElement('li', null, l)
+						})),
+
+						React.createElement('hr', null),
+
+						React.createElement('h6', null, 'Incomming'),
+						React.createElement('ul', null, Object.keys(r.Link.Incomming).map(function(l) {
+							return React.createElement('li', null, l)
+						}))
+					),
+
+					React.createElement('div', {
+						className: 'panel-footer'
+					},
+						React.createElement('small', {
+							className: 'text-muted'
+						},
+							'Size: ' + r.Doc.Size + ' bytes - ' +
+							'Last Modified: ' + lastModified.toDateString() + ' '
+						)
+					)
 				);
 			});
 		}

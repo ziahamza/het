@@ -18,7 +18,7 @@ import (
 	"github.com/boltdb/bolt"
 )
 
-func AddOutgoingLink(links *bolt.Bucket, parentLink, childLink het.Link) {
+func AddOutgoingLink(links *bolt.Bucket, parentLink, childLink *het.Link) {
 	if parentLink.Outgoing == nil {
 		parentLink.Outgoing = make(map[string]bool)
 	}
@@ -29,6 +29,9 @@ func AddOutgoingLink(links *bolt.Bucket, parentLink, childLink het.Link) {
 
 	parentLink.Outgoing[childLink.URL.String()] = true
 	childLink.Incomming[parentLink.URL.String()] = true
+
+	fmt.Printf("Incomming for %s %d\n", childLink.URL.String(), len(childLink.Incomming))
+	fmt.Printf("Outgoing for %s %d\n", parentLink.URL.String(), len(parentLink.Outgoing))
 
 	pbytes, err := json.Marshal(&parentLink)
 	if err != nil {
@@ -261,7 +264,7 @@ func CrawlPage(db *bolt.DB) (het.CountStats, error) {
 								break
 							}
 
-							AddOutgoingLink(links, link, childLink)
+							AddOutgoingLink(links, &link, &childLink)
 
 							outgoing = append(outgoing, childLink.URL.String())
 						}

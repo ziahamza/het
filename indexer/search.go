@@ -14,10 +14,11 @@ import (
 )
 
 type SearchResult struct {
-	Doc  het.Document
-	Rank float64
-	URL  string
-	Link het.Link
+	Doc      het.Document
+	Rank     float64
+	URL      string
+	Keywords het.DocKeywords
+	Link     het.Link
 }
 
 type SearchResults []SearchResult
@@ -38,6 +39,7 @@ func Search(db *bolt.DB, query string) (SearchResults, error) {
 		docs := tx.Bucket([]byte("docs"))
 		links := tx.Bucket([]byte("links"))
 		stats := tx.Bucket([]byte("stats"))
+		docKeywords := tx.Bucket([]byte("doc-keywords"))
 
 		countStats := het.CountStats{}
 		cbytes := stats.Get([]byte("count"))
@@ -52,11 +54,12 @@ func Search(db *bolt.DB, query string) (SearchResults, error) {
 
 		// indexes to sort out data
 		docRanks := make(map[string]struct {
-			tfIdf   map[string]float64
-			rank    float64
-			partial bool
-			doc     het.Document
-			link    het.Link
+			tfIdf    map[string]float64
+			rank     float64
+			partial  bool
+			doc      het.Document
+			keywords het.DocKeywords
+			link     het.Link
 		})
 
 		keyword := het.Keyword{}
@@ -68,8 +71,6 @@ func Search(db *bolt.DB, query string) (SearchResults, error) {
 
 				fmt.Printf("Found index for word: '%s' with docs: %d \n", word, len(keyword.Docs))
 
-				doc := het.Document{}
-				link := het.Link{}
 				for _, ref := range keyword.Docs {
 					rank, found := docRanks[ref.URL.String()]
 
@@ -79,6 +80,7 @@ func Search(db *bolt.DB, query string) (SearchResults, error) {
 
 						dbytes := docs.Get([]byte(ref.URL.String()))
 						lbytes := links.Get([]byte(ref.URL.String()))
+
 						if dbytes == nil {
 							return errors.New("Document not found in the main index, but in keyword index!")
 						}
@@ -86,6 +88,13 @@ func Search(db *bolt.DB, query string) (SearchResults, error) {
 						if lbytes == nil {
 							return errors.New("Document link missing ?!!! ... maybe run the index again.")
 						}
+
+						if kbytes == nil {
+							return errors.New("No keywords found in doc!")
+						}
+
+						doc := het.Document{}
+						link := het.Link{}
 
 						json.Unmarshal(dbytes, &doc)
 
@@ -96,8 +105,18 @@ func Search(db *bolt.DB, query string) (SearchResults, error) {
 							continue
 						}
 
+						keywords := het.DocKeywords{}
+						kbytes := docKeywords.Get([]byte(ref.URL.String()))
+						if kbytes == nil {
+							return errors.New("No keywords found for a doc with Non Zero length")
+						}
+
+						json.Unmarshal(kbytes, &keywords)
+						sort.Sort(keywords)
+
 						rank.doc = doc
 						rank.link = link
+						rank.keywords = keywords[:5]
 
 					}
 
@@ -122,10 +141,11 @@ func Search(db *bolt.DB, query string) (SearchResults, error) {
 			}
 
 			results = append(results, SearchResult{
-				Doc:  rank.doc,
-				Link: rank.link,
-				URL:  rank.link.URL.String(),
-				Rank: rank.rank / (rank.doc.Length * length),
+				Doc:      rank.doc,
+				Link:     rank.link,
+				URL:      rank.link.URL.String(),
+				Keywords: rank.keywords,
+				Rank:     rank.rank / (rank.doc.Length * length),
 			})
 		}
 

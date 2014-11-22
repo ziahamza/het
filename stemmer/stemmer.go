@@ -12,6 +12,10 @@ import (
 var stopWords map[string]bool
 
 func StemWord(word string) string {
+	if stopWords[word] {
+		return ""
+	}
+
 	stem := porterstemmer.StemString(word)
 	if stopWords[stem] || len(stem) == 0 {
 		return ""
@@ -20,12 +24,12 @@ func StemWord(word string) string {
 	return stem
 }
 func RefineQuery(query string) []string {
-	keywords := strings.Split(query, " ")
-	for i := 0; i < len(keywords); i++ {
-		keywords[i] = StemWord(keywords[i])
-
-		if keywords[i] == "" {
-			keywords = append(keywords[:i], keywords[i+1:]...)
+	tokens := strings.Split(query, " ")
+	keywords := []string{}
+	for i := 0; i < len(tokens); i++ {
+		word := StemWord(strings.Trim(tokens[i], "\r\n"))
+		if word != "" {
+			keywords = append(keywords, word)
 		}
 	}
 
@@ -41,7 +45,7 @@ func LoadStopWords(path string) {
 
 	content := string(fileData[:])
 
-	words := strings.Split(content, "\n")
+	words := strings.Split(content, "\r\n")
 
 	for _, word := range words {
 		stopWords[word] = true

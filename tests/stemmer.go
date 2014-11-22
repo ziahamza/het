@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/reiver/go-porterstemmer"
+	"search/stemmer"
 
 	"bufio"
 	"io/ioutil"
@@ -31,7 +32,7 @@ func refineQuery(query string) []string {
 
 func setupStopWords() {
 	stopWords = map[string]bool{}
-	fileData, err := ioutil.ReadFile("stopwords.txt")
+	fileData, err := ioutil.ReadFile("../stopwords.txt")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -45,8 +46,8 @@ func setupStopWords() {
 	}
 }
 
-func testRefineQuery() {
-	setupStopWords()
+func main() {
+	stemmer.LoadStopWords("../stopwords.txt")
 
 	for true {
 		fmt.Printf("Please enter query: ")
@@ -60,7 +61,7 @@ func testRefineQuery() {
 			break
 		}
 
-		_refineQuery := refineQuery(word)
+		_refineQuery := stemmer.RefineQuery(word)
 		fmt.Printf("Your query: \n")
 		for i := range _refineQuery {
 			if _refineQuery[i] != "" {

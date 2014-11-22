@@ -6,12 +6,6 @@ type CountStats struct {
 	DocumentCount, PendingCount, KeywordCount, LinkCount int
 }
 
-// used by the docs bucket to refer to a specific keyword under a document
-type KeywordRef struct {
-	Word      string
-	Frequency int
-}
-
 // stored in docs bucket
 type Document struct {
 	URL    url.URL
@@ -35,6 +29,12 @@ type Link struct {
 
 	Outgoing  map[string]bool
 	Incomming map[string]bool
+}
+
+// used by the docs bucket to refer to a specific keyword under a document
+type KeywordRef struct {
+	Word      string
+	Frequency int
 }
 
 // stored in bucket doc-keywords mapped by the doc url

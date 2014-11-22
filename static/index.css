@@ -30,6 +30,11 @@
 	cursor: pointer;
 }
 
+.keyword {
+	background-color: #eeeeee;
+	margin-right: 10px;
+}
+
 .searchtext {
 	width: 80%;
 	background: white;
