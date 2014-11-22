@@ -14,9 +14,10 @@ import (
 )
 
 type SearchResult struct {
-	Title, URL string
-	Rank       float64
-	Size       int
+	Doc  het.Document
+	Rank float64
+	URL  string
+	Link het.Link
 }
 
 type SearchResults []SearchResult
@@ -35,6 +36,7 @@ func Search(db *bolt.DB, query string) (SearchResults, error) {
 	err := db.View(func(tx *bolt.Tx) error {
 		keywords := tx.Bucket([]byte("keywords"))
 		docs := tx.Bucket([]byte("docs"))
+		links := tx.Bucket([]byte("links"))
 		stats := tx.Bucket([]byte("stats"))
 
 		countStats := het.CountStats{}
@@ -50,9 +52,11 @@ func Search(db *bolt.DB, query string) (SearchResults, error) {
 
 		// indexes to sort out data
 		docRanks := make(map[string]struct {
-			tfIdf map[string]float64
-			rank  float64
-			doc   het.Document
+			tfIdf   map[string]float64
+			rank    float64
+			partial bool
+			doc     het.Document
+			link    het.Link
 		})
 
 		keyword := het.Keyword{}
@@ -65,17 +69,27 @@ func Search(db *bolt.DB, query string) (SearchResults, error) {
 				fmt.Printf("Found index for word: '%s' with docs: %d \n", word, len(keyword.Docs))
 
 				doc := het.Document{}
+				link := het.Link{}
 				for _, ref := range keyword.Docs {
 					rank, found := docRanks[ref.URL.String()]
 
 					if !found {
 						rank.tfIdf = map[string]float64{}
+						rank.partial = false
+
 						dbytes := docs.Get([]byte(ref.URL.String()))
+						lbytes := links.Get([]byte(ref.URL.String()))
 						if dbytes == nil {
 							return errors.New("Document not found in the main index, but in keyword index!")
 						}
 
+						if lbytes == nil {
+							return errors.New("Document link missing ?!!! ... maybe run the index again.")
+						}
+
 						json.Unmarshal(dbytes, &doc)
+
+						json.Unmarshal(lbytes, &link)
 
 						if doc.Length <= 0 {
 							fmt.Printf("got back doc with 0 length: %v \n", doc)
@@ -83,10 +97,15 @@ func Search(db *bolt.DB, query string) (SearchResults, error) {
 						}
 
 						rank.doc = doc
+						rank.link = link
+
 					}
 
 					/* tf-idf */
 					rank.tfIdf[word] = float64(freq*ref.Frequency) * math.Log(float64(countStats.DocumentCount)/float64(len(keyword.Docs)))
+					if ref.Frequency == 0 {
+						rank.partial = true
+					}
 					rank.rank += rank.tfIdf[word]
 
 					docRanks[ref.URL.String()] = rank
@@ -96,22 +115,27 @@ func Search(db *bolt.DB, query string) (SearchResults, error) {
 			}
 		}
 
-		for url, rank := range docRanks {
+		for _, rank := range docRanks {
+			if rank.partial || rank.rank == 0 {
+				// even if one keyword no found, return early
+				continue
+			}
+
 			results = append(results, SearchResult{
-				Title: rank.doc.Title,
-				URL:   url,
-				Rank:  rank.rank / (rank.doc.Length * length),
-				Size:  rank.doc.Size,
+				Doc:  rank.doc,
+				Link: rank.link,
+				URL:  rank.link.URL.String(),
+				Rank: rank.rank / (rank.doc.Length * length),
 			})
 		}
 
 		sort.Sort(results)
 
-		if len(results) > 10 {
-			results = results[:10]
-		}
-
 		fmt.Printf("returning %d results for query\n", len(results))
+
+		if len(results) > 50 {
+			results = results[:50]
+		}
 
 		return nil
 	})

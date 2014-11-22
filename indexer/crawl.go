@@ -44,7 +44,7 @@ func AddOutgoingLink(links *bolt.Bucket, parentLink, childLink het.Link) {
 	links.Put([]byte(parentLink.URL.String()), pbytes)
 }
 
-func GetLink(links *bolt.Bucket, url *url.URL) (het.Link, error) {
+func GetLink(links *bolt.Bucket, stats *het.CountStats, url *url.URL) (het.Link, error) {
 	url.Fragment = ""
 
 	lbytes := links.Get([]byte(url.String()))
@@ -55,7 +55,7 @@ func GetLink(links *bolt.Bucket, url *url.URL) (het.Link, error) {
 
 		// follow redirects in the links bucket
 		if link.Redirect {
-			return GetLink(links, &link.URL)
+			return GetLink(links, stats, &link.URL)
 		}
 
 		return link, nil
@@ -84,6 +84,7 @@ func GetLink(links *bolt.Bucket, url *url.URL) (het.Link, error) {
 	}
 
 	links.Put([]byte(finalURL.String()), lbytes)
+	stats.LinkCount++
 
 	// redirect link
 	if finalURL.String() != url.String() {
@@ -97,6 +98,7 @@ func GetLink(links *bolt.Bucket, url *url.URL) (het.Link, error) {
 		}
 
 		links.Put([]byte(url.String()), lrbytes)
+		stats.LinkCount++
 	}
 
 	return link, nil
@@ -122,8 +124,17 @@ func ValidLink(link het.Link) bool {
 	return true
 }
 
+// regularly flush statistics
+func FlushStats(stats *bolt.Bucket, countStats *het.CountStats) {
+	sbytes, err := json.Marshal(countStats)
+	if err != nil {
+		log.Fatal(err)
+	}
+	stats.Put([]byte("count"), sbytes)
+}
+
 func CrawlPage(db *bolt.DB) (het.CountStats, error) {
-	countStats := het.CountStats{}
+	countStats := &het.CountStats{}
 	err := db.Update(func(tx *bolt.Tx) error {
 		fmt.Println("Indexing pages ...")
 
@@ -140,7 +151,7 @@ func CrawlPage(db *bolt.DB) (het.CountStats, error) {
 			log.Fatal(errors.New("Count Statistics not found in the db!"))
 		}
 
-		err := json.Unmarshal(cbytes, &countStats)
+		err := json.Unmarshal(cbytes, countStats)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -149,14 +160,19 @@ func CrawlPage(db *bolt.DB) (het.CountStats, error) {
 		if ubytes == nil {
 			fmt.Printf("no pending doc to index ... \n")
 
+			countStats.PendingCount++
+			FlushStats(stats, countStats)
 			pending.Put([]byte("http://en.wikipedia.org/wiki/List_of_most_popular_websites"), []byte(""))
 
 			// status one means finished, we saturated the internet
-			return errors.New("Somehow saturated the entire internet ?!!")
+			fmt.Printf("Somehow Saturated the internet ?!! trying external links ... \n")
+			return nil
 		}
 
 		// delete the url from pending
 		pending.Delete(ubytes)
+		countStats.PendingCount--
+		FlushStats(stats, countStats)
 
 		uri, err := url.Parse(string(ubytes[:]))
 
@@ -166,18 +182,26 @@ func CrawlPage(db *bolt.DB) (het.CountStats, error) {
 			return nil
 		}
 
-		link, err := GetLink(links, uri)
+		link, err := GetLink(links, countStats, uri)
+		FlushStats(stats, countStats)
 
 		if err != nil {
-			// add the page back to pending to try again
-			pending.Put([]byte(uri.String()), []byte(""))
-
+			// returning error will roll back everything
 			return errors.New("Cannot connect to internet to from link, returning ... ")
 		}
 
 		if !ValidLink(link) {
 			return nil
 		}
+
+		fmt.Printf("---------------------------------------------\n")
+		fmt.Printf("Links Indexed     : %d \n", countStats.LinkCount)
+		fmt.Printf("Documents Indexed : %d \n", countStats.DocumentCount)
+		fmt.Printf("Documents Left    : %d \n", countStats.PendingCount)
+		fmt.Printf("Keywords Indexed  : %d \n", countStats.KeywordCount)
+		fmt.Printf("\n")
+
+		fmt.Printf("Url           : %s \n", link.URL.String())
 
 		// original uri already indexed
 		if docs.Get([]byte(link.URL.String())) != nil {
@@ -187,8 +211,7 @@ func CrawlPage(db *bolt.DB) (het.CountStats, error) {
 
 		resp, err := http.Get(link.URL.String())
 		if err != nil {
-			// add the page back to pending to try again
-			pending.Put([]byte(link.URL.String()), []byte(""))
+			// everything will rollback, so no worries
 			return err
 		}
 
@@ -225,10 +248,12 @@ func CrawlPage(db *bolt.DB) (het.CountStats, error) {
 								break
 							}
 
-							childLink, err := GetLink(links, childURL)
+							childLink, err := GetLink(links, countStats, childURL)
+							FlushStats(stats, countStats)
 
 							if err != nil {
 								fmt.Printf("Somehow got unlucky and unable to get child link, ignoring: %s\n", err.Error())
+
 								break
 							}
 
@@ -320,7 +345,7 @@ func CrawlPage(db *bolt.DB) (het.CountStats, error) {
 		}
 
 		for _, l := range outgoing {
-			countStats.PendingCount = countStats.PendingCount + 1
+			countStats.PendingCount++
 			pending.Put([]byte(l), []byte(""))
 		}
 
@@ -330,28 +355,16 @@ func CrawlPage(db *bolt.DB) (het.CountStats, error) {
 		docs.Put([]byte(link.URL.String()), dbytes)
 		docKeywords.Put([]byte(link.URL.String()), kbytes)
 
-		countStats.DocumentCount = countStats.DocumentCount + 1
+		countStats.DocumentCount++
+		FlushStats(stats, countStats)
 
-		sbytes, err := json.Marshal(&countStats)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		stats.Put([]byte("count"), sbytes)
-
-		fmt.Printf("---------------------------------------------\n")
 		fmt.Printf("Title         : %s \n", doc.Title)
-		fmt.Printf("Url           : %s \n", link.URL.String())
 		fmt.Printf("Size          : %d \n", doc.Size)
 		fmt.Printf("Last Modified : %s \n", link.LastModified)
 		fmt.Printf("Children      : %d \n \n", len(outgoing))
 
-		fmt.Printf("Documents Indexed : %d \n", countStats.DocumentCount)
-		fmt.Printf("Documents Left    : %d \n", countStats.PendingCount)
-		fmt.Printf("Keywords Indexed  : %d \n", countStats.KeywordCount)
-
 		return nil
 	})
 
-	return countStats, err
+	return *countStats, err
 }

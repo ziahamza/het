@@ -70,17 +70,6 @@ func main() {
 			return err
 		}
 
-		sbytes := stats.Get([]byte("count"))
-		if sbytes == nil {
-			stat := het.CountStats{DocumentCount: 0, KeywordCount: 0}
-			sbytes, err = json.Marshal(&stat)
-			if err != nil {
-				return err
-			}
-
-			stats.Put([]byte("count"), sbytes)
-		}
-
 		pending, err := tx.CreateBucketIfNotExists([]byte("pending"))
 		if err != nil {
 			return err
@@ -88,8 +77,20 @@ func main() {
 
 		dbytes, _ := docs.Cursor().First()
 
+		stat := het.CountStats{DocumentCount: 0, LinkCount: 0, PendingCount: 0, KeywordCount: 0}
 		if dbytes == nil {
 			pending.Put([]byte("http://www.cse.ust.hk/~ericzhao/COMP4321/TestPages/testpage.htm"), []byte(""))
+			stat.PendingCount++
+		}
+
+		sbytes := stats.Get([]byte("count"))
+		if sbytes == nil {
+			sbytes, err = json.Marshal(&stat)
+			if err != nil {
+				return err
+			}
+
+			stats.Put([]byte("count"), sbytes)
 		}
 
 		fmt.Printf("Created db successfully!\n")

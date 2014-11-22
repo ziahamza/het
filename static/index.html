@@ -90,9 +90,9 @@
 			});
 		};
 
-		var createEntry = function(doc) {
-			var title = $('<b/>').text(doc.Title + '-' + doc.Rank);
-			var url = $('<small/>').text(doc.URL);
+		var createEntry = function(entry) {
+			var title = $('<b/>').text(entry.Rank + ': ' + entry.Doc.Title);
+			var url = $('<small/>').text(entry.URL);
 			return $('<blockquote/>').append(title).append(url)
 		};
 

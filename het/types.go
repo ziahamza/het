@@ -3,7 +3,7 @@ package het
 import "net/url"
 
 type CountStats struct {
-	DocumentCount, PendingCount, KeywordCount int
+	DocumentCount, PendingCount, KeywordCount, LinkCount int
 }
 
 // used by the docs bucket to refer to a specific keyword under a document
