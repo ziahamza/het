@@ -94,7 +94,10 @@ var SearchApp = React.createClass({
 				},
 					React.createElement('div', {
 						className: 'panel-heading'
-					}, r.Doc.Title),
+					},
+						React.createElement('a', {className: 'link'}, r.Doc.Title),
+						React.createElement('small', {className: 'text-muted'}, ' - ' + r.Link.LastModified)
+					),
 
 					React.createElement('div', {
 						className: 'panel-body'

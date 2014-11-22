@@ -26,6 +26,10 @@
 	margin-bottom:30px;
 }
 
+.link {
+	cursor: pointer;
+}
+
 .searchtext {
 	width: 80%;
 	background: white;
