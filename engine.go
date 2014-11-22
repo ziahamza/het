@@ -55,7 +55,7 @@ func main() {
 			return err
 		}
 
-		_, err = tx.CreateBucketIfNotExists([]byte("doc-links"))
+		_, err = tx.CreateBucketIfNotExists([]byte("links"))
 		if err != nil {
 			return err
 		}

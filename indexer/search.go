@@ -66,11 +66,11 @@ func Search(db *bolt.DB, query string) (SearchResults, error) {
 
 				doc := het.Document{}
 				for _, ref := range keyword.Docs {
-					rank, found := docRanks[ref.URL]
+					rank, found := docRanks[ref.URL.String()]
 
 					if !found {
 						rank.tfIdf = map[string]float64{}
-						dbytes := docs.Get([]byte(ref.URL))
+						dbytes := docs.Get([]byte(ref.URL.String()))
 						if dbytes == nil {
 							return errors.New("Document not found in the main index, but in keyword index!")
 						}
@@ -89,7 +89,7 @@ func Search(db *bolt.DB, query string) (SearchResults, error) {
 					rank.tfIdf[word] = float64(freq*ref.Frequency) * math.Log(float64(countStats.DocumentCount)/float64(len(keyword.Docs)))
 					rank.rank += rank.tfIdf[word]
 
-					docRanks[ref.URL] = rank
+					docRanks[ref.URL.String()] = rank
 				}
 			} else {
 				fmt.Printf("Cannot find index for keyword: %s\n", word)

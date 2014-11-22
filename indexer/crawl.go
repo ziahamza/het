@@ -18,6 +18,110 @@ import (
 	"github.com/boltdb/bolt"
 )
 
+func AddOutgoingLink(links *bolt.Bucket, parentLink, childLink het.Link) {
+	if parentLink.Outgoing == nil {
+		parentLink.Outgoing = make(map[string]bool)
+	}
+
+	if childLink.Incomming == nil {
+		childLink.Incomming = make(map[string]bool)
+	}
+
+	parentLink.Outgoing[childLink.URL.String()] = true
+	childLink.Incomming[parentLink.URL.String()] = true
+
+	pbytes, err := json.Marshal(&parentLink)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	cbytes, err := json.Marshal(&childLink)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	links.Put([]byte(childLink.URL.String()), cbytes)
+	links.Put([]byte(parentLink.URL.String()), pbytes)
+}
+
+func GetLink(links *bolt.Bucket, url *url.URL) (het.Link, error) {
+	url.Fragment = ""
+
+	lbytes := links.Get([]byte(url.String()))
+	link := het.Link{}
+	if lbytes != nil {
+		// link already exists, return early
+		json.Unmarshal(lbytes, &link)
+
+		// follow redirects in the links bucket
+		if link.Redirect {
+			return GetLink(links, &link.URL)
+		}
+
+		return link, nil
+	}
+
+	resp, err := http.Get(url.String())
+	if err != nil {
+		return link, err
+	}
+
+	defer resp.Body.Close()
+
+	finalURL := resp.Request.URL
+	finalURL.Fragment = ""
+
+	link = het.Link{
+		URL:          *finalURL,
+		StatusCode:   resp.StatusCode,
+		ContentType:  resp.Header.Get("Content-Type"),
+		LastModified: strings.Trim(resp.Header.Get("Last-Modified"), " \t\n"),
+	}
+
+	lbytes, err = json.Marshal(&link)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	links.Put([]byte(finalURL.String()), lbytes)
+
+	// redirect link
+	if finalURL.String() != url.String() {
+		lrbytes, err := json.Marshal(&het.Link{
+			URL:      *finalURL,
+			Redirect: true,
+		})
+
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		links.Put([]byte(url.String()), lrbytes)
+	}
+
+	return link, nil
+
+}
+
+func ValidLink(link het.Link) bool {
+	if !(link.URL.Scheme == "http" || link.URL.Scheme == "https") {
+		fmt.Printf("ignoring url with unknows scheme %s \n", link.URL.Scheme)
+		return false
+	}
+
+	if link.StatusCode < 200 || link.StatusCode >= 299 {
+		fmt.Printf("page %s not found \n", link.URL.String())
+		return false
+	}
+
+	if !(strings.Contains(link.ContentType, "html")) {
+		fmt.Printf("non html file (%s) ... ignoring\n", link.ContentType)
+		return false
+	}
+
+	return true
+}
+
 func CrawlPage(db *bolt.DB) (het.CountStats, error) {
 	countStats := het.CountStats{}
 	err := db.Update(func(tx *bolt.Tx) error {
@@ -26,7 +130,7 @@ func CrawlPage(db *bolt.DB) (het.CountStats, error) {
 		pending := tx.Bucket([]byte("pending"))
 		docs := tx.Bucket([]byte("docs"))
 		docKeywords := tx.Bucket([]byte("doc-keywords"))
-		docLinks := tx.Bucket([]byte("doc-links"))
+		links := tx.Bucket([]byte("links"))
 
 		keywords := tx.Bucket([]byte("keywords"))
 		stats := tx.Bucket([]byte("stats"))
@@ -51,53 +155,44 @@ func CrawlPage(db *bolt.DB) (het.CountStats, error) {
 			return errors.New("Somehow saturated the entire internet ?!!")
 		}
 
-		uri, _ := url.Parse(string(ubytes[:]))
-		uri.Fragment = ""
-
 		// delete the url from pending
 		pending.Delete(ubytes)
 
-		// original uri already indexed
-		if docs.Get([]byte(uri.String())) != nil {
-			// fmt.Printf("uri %s already exists ... ignoring\n", uri.String())
+		uri, err := url.Parse(string(ubytes[:]))
+
+		if err != nil {
+			fmt.Printf("Cannot parse pending url %s \n", string(ubytes[:]))
+
 			return nil
 		}
 
-		resp, err := http.Get(uri.String())
-		if err != nil {
-			// not removing page as internet is not working ...
-			fmt.Printf("Error getting back a page (%s) ... waiting 2 sec \n", err.Error())
+		link, err := GetLink(links, uri)
 
+		if err != nil {
 			// add the page back to pending to try again
 			pending.Put([]byte(uri.String()), []byte(""))
+
+			return errors.New("Cannot connect to internet to from link, returning ... ")
+		}
+
+		if !ValidLink(link) {
 			return nil
+		}
+
+		// original uri already indexed
+		if docs.Get([]byte(link.URL.String())) != nil {
+			// fmt.Printf("uri %s already exists ... ignoring\n", link.URL.String())
+			return nil
+		}
+
+		resp, err := http.Get(link.URL.String())
+		if err != nil {
+			// add the page back to pending to try again
+			pending.Put([]byte(link.URL.String()), []byte(""))
+			return err
 		}
 
 		defer resp.Body.Close()
-
-		if resp.StatusCode < 200 || resp.StatusCode >= 299 {
-			fmt.Printf("page %s not found \n", uri.String)
-			return nil
-		}
-
-		contentType := resp.Header.Get("Content-Type")
-		if !(strings.Contains(contentType, "html")) {
-			fmt.Printf("non html file (%s) ... ignoring\n", contentType)
-			return nil
-		}
-
-		parent, _ := url.Parse(resp.Request.URL.String())
-
-		// Optimisation: remove any hash fragments from the url
-		parent.Fragment = ""
-
-		parentUri := parent.String()
-
-		// if the new redirected uri already indexed
-		if parentUri != uri.String() && docs.Get([]byte(parentUri)) != nil {
-			fmt.Printf("uri %s already exists ... ignoring\n", uri.String())
-			return nil
-		}
 
 		buff, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
@@ -113,7 +208,7 @@ func CrawlPage(db *bolt.DB) (het.CountStats, error) {
 			return nil
 		}
 
-		links := []string{}
+		outgoing := []string{}
 		text := []string{}
 
 		var title string
@@ -124,16 +219,26 @@ func CrawlPage(db *bolt.DB) (het.CountStats, error) {
 				if n.Data == "a" {
 					for _, a := range n.Attr {
 						if a.Key == "href" {
-							child, err := parent.Parse(a.Val)
-							if err == nil && (child.Scheme == "http" || child.Scheme == "https") {
-								child.Fragment = ""
-
-								links = append(links, child.String())
-							} else {
+							childURL, err := link.URL.Parse(a.Val)
+							if err != nil || !(childURL.Scheme == "http" || childURL.Scheme == "https") {
 								fmt.Printf("got back error parsing %s\n", a.Val)
+								break
 							}
 
-							break
+							childLink, err := GetLink(links, childURL)
+
+							if err != nil {
+								fmt.Printf("Somehow got unlucky and unable to get child link, ignoring: %s\n", err.Error())
+								break
+							}
+
+							if !ValidLink(childLink) {
+								break
+							}
+
+							AddOutgoingLink(links, link, childLink)
+
+							outgoing = append(outgoing, childLink.URL.String())
 						}
 					}
 				}
@@ -172,10 +277,10 @@ func CrawlPage(db *bolt.DB) (het.CountStats, error) {
 
 		dockeys := []het.KeywordRef{}
 		doc := het.Document{
-			Title:        title,
-			Size:         contentSize,
-			Length:       length,
-			LastModified: strings.Trim(resp.Header.Get("Last-Modified"), " \t\n"),
+			URL:    link.URL,
+			Title:  title,
+			Size:   contentSize,
+			Length: length,
 		}
 
 		for word := range wordCount {
@@ -205,7 +310,7 @@ func CrawlPage(db *bolt.DB) (het.CountStats, error) {
 			keyword.Frequency = keyword.Frequency + wordCount[word]
 
 			keyword.Docs = append(keyword.Docs, het.DocumentRef{
-				URL:       uri.String(),
+				URL:       link.URL,
 				Frequency: wordCount[word],
 			})
 
@@ -214,25 +319,16 @@ func CrawlPage(db *bolt.DB) (het.CountStats, error) {
 			keywords.Put([]byte(word), kbytes)
 		}
 
-		for _, link := range links {
+		for _, l := range outgoing {
 			countStats.PendingCount = countStats.PendingCount + 1
-			pending.Put([]byte(link), []byte(""))
+			pending.Put([]byte(l), []byte(""))
 		}
 
 		dbytes, _ := json.Marshal(&doc)
 		kbytes, _ := json.Marshal(&dockeys)
-		lbytes, _ := json.Marshal(&links)
 
-		docs.Put([]byte(uri.String()), dbytes)
-		docKeywords.Put([]byte(uri.String()), kbytes)
-		docLinks.Put([]byte(uri.String()), lbytes)
-
-		if parentUri != uri.String() {
-			// it was a redirect .. put the parent uri anyways so we never download it
-			docs.Put([]byte(parentUri), dbytes)
-			docKeywords.Put([]byte(parentUri), kbytes)
-			docLinks.Put([]byte(parentUri), lbytes)
-		}
+		docs.Put([]byte(link.URL.String()), dbytes)
+		docKeywords.Put([]byte(link.URL.String()), kbytes)
 
 		countStats.DocumentCount = countStats.DocumentCount + 1
 
@@ -245,10 +341,10 @@ func CrawlPage(db *bolt.DB) (het.CountStats, error) {
 
 		fmt.Printf("---------------------------------------------\n")
 		fmt.Printf("Title         : %s \n", doc.Title)
-		fmt.Printf("Url           : %s \n", parentUri)
+		fmt.Printf("Url           : %s \n", link.URL.String())
 		fmt.Printf("Size          : %d \n", doc.Size)
-		fmt.Printf("Last Modified : %s \n", doc.LastModified)
-		fmt.Printf("Children      : %d \n \n", len(links))
+		fmt.Printf("Last Modified : %s \n", link.LastModified)
+		fmt.Printf("Children      : %d \n \n", len(outgoing))
 
 		fmt.Printf("Documents Indexed : %d \n", countStats.DocumentCount)
 		fmt.Printf("Documents Left    : %d \n", countStats.PendingCount)
