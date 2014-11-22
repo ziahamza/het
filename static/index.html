@@ -9,44 +9,22 @@
 	<!-- http://bootswatch.com/paper/ -->
 	<script src="bootstrap/js/bootstrap.js"></script>
 	<link rel="stylesheet" href="bootstrap/css/paper-theme.css">
+	<script src="http://fb.me/react-0.12.1.js"></script>
 
-	<style>
-		.container {
-			text-align: center;
-		}
-		.searchbox {
-			margin-top: 30%;
-			margin-bottom: 50px;
-		}
-
-		.results {
-			text-align: left;
-		}
-
-		.middle {
-			text-align: left;
-			margin-left: auto;
-			margin-right: auto;
-
-			width: 90%;
-		}
-		#searchtext {
-			width: 80%;
-			background: white;
-			display: inline;
-		}
-	</style>
+	<link rel="stylesheet" href="index.css">
 </head>
 <body>
 
     <div class="container">
+		<!--
 		<form class="searchbox middle">
 			<input type="text" class="form-control input-lg" placeholder="Search" id="searchtext" autocomplete="off" >
 
-			<button eype="submit" class="btn btn-info" id="search-button">
+			<button type="submit" class="btn btn-info" id="search-button">
 				<span class="glyphicon glyphicon-search"></span>
 			</button>
 		</form>
+		-->
 
 		<div class="middle results">
 			<!--
@@ -60,119 +38,9 @@
 
     </div>
 
+	<script src="index.js"></script>
+
 	<script>
-		var getSearchResults = function(query) {
-			return new Promise(function(resolve, reject) {
-				var req = new XMLHttpRequest();
-				req.open('GET', '/search?query=' + query);
-				req.onload = function(res) {
-					if (req.status == 200) {
-						var obj = null;
-						try {
-							obj = JSON.parse(req.response);
-						}
-						catch(ex) { return reject(err) };
-
-						if (!obj.success) {
-							return reject(Error(obj.message));
-						}
-
-						resolve(obj.results);
-					} else {
-						reject(Error("Server not responding properly:" + req.status))
-					}
-				};
-				req.onerror = function() {
-					reject(Error("Server unavailable."))
-				};
-
-				req.send();
-			});
-		};
-
-		var createEntry = function(entry) {
-			var title = $('<b/>').text(entry.Rank + ': ' + entry.Doc.Title);
-			var url = $('<small/>').text(entry.URL);
-			return $('<blockquote/>').append(title).append(url)
-		};
-
-		var displayResults = function(results) {
-			var rootElem = $('.results');
-			rootElem.html('');
-
-			console.log('got back search response:', results);
-			var elems = results.map(createEntry)
-			if (elems.length) {
-				rootElem.append(elems);
-			}
-			else {
-				rootElem.append('<b>No result found. Try a more general query.</b>');
-			}
-
-			$('#search-button').prop('disabled', false);
-		};
-
-		var searchText = $('#searchtext');
-		var searchBox = $('.searchbox');
-
-		var text = searchText.asEventStream('keydown')
-		.debounce(300)
-		.map(function(ev) {
-			return ev.target.value;
-		});
-
-		var suggestions = text.flatMapLatest(function(query) {
-			if (query.length < 3) {
-				return Bacon.once([]);
-			}
-
-			console.log('got back query:', query);
-
-			return Bacon.fromPromise(getSearchResults(query));
-		});
-
-		var first = false;
-
-		text.awaiting(suggestions).onValue(function(x) {
-			if (x) {
-				if (!first) {
-					$('.searchbox').animate({
-						marginTop: '5%'
-					}, 400, 'easeInCirc', function() {
-						console.log('animation finished!');
-					});
-
-					first = true;
-
-					return;
-				}
-
-				$('#search-button').prop('disabled', true);
-				$('.results').html('Searching ... ');
-			}
-		});
-
-		suggestions.onValue(function(results) {
-			displayResults(results);
-		});
-
-		var searchButton = $('#search-button');
-
-		searchBox.on('submit', function(ev) {
-			ev.preventDefault();
-
-			if (!first) {
-				$('.searchbox').animate({
-					marginTop: '5%'
-				}, 400, 'easeInCirc', function() {
-					console.log('animation finished!');
-				});
-
-				first = true;
-
-				return;
-			}
-		});
 	</script>
 </body>
 </html>

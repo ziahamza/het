@@ -1,0 +1,36 @@
+.container {
+	text-align: center;
+}
+.searchbox {
+	margin-top: 30%;
+	margin-bottom: 50px;
+}
+
+.searchbox-animated {
+	margin-top: 5%;
+	-webkit-transition: all 600ms cubic-bezier(0.6, 0.04, 0.98, 0.355);
+	transition: all 400ms cubic-bezier(0.6, 0.04, 0.98, 0.355);
+}
+
+.result {
+	width: 80%;
+	text-align: left;
+}
+
+.middle {
+	text-align: left;
+	margin-left: auto;
+	margin-right: auto;
+
+	width: 90%;
+	margin-bottom:30px;
+}
+
+.searchtext {
+	width: 80%;
+	background: white;
+	display: inline;
+}
+.submitbtn {
+	margin-left: 20px;
+}
