@@ -142,7 +142,8 @@ var SearchApp = React.createClass({
 							className: 'text-muted'
 						},
 							'Size: ' + r.Doc.Size + ' bytes - ' +
-							'Last Modified: ' + lastModified.toDateString() + ' '
+							'Last Modified: ' + lastModified.toDateString() + ' ' +
+							'Rank: ' + Math.round(r.Rank * 1000)/1000
 						)
 					)
 				);

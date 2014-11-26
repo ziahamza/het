@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 
+	"errors"
+
 	"net/http"
 	"net/url"
 	"os"
@@ -104,15 +106,33 @@ func main() {
 
 	fmt.Printf("Starting to index pending docs ... \n")
 
-	for true {
-		stats, err := indexer.CrawlPage(db)
+	countStats := het.CountStats{}
+	err = db.Update(func(tx *bolt.Tx) error {
+		fmt.Println("Indexing pages ...")
+		stats := tx.Bucket([]byte("stats"))
+
+		cbytes := stats.Get([]byte("count"))
+		if cbytes == nil {
+			return errors.New("Count Statistics not found in the db!")
+		}
+
+		err := json.Unmarshal(cbytes, &countStats)
 		if err != nil {
-			fmt.Printf("got an error indexing page: %s\n", err.Error())
+			return err
+		}
+
+		return nil
+	})
+
+	for true {
+		if countStats.DocumentCount >= *indexLimit {
+			fmt.Printf("Finished indexing enough pages %d \n", countStats.DocumentCount)
 			break
 		}
 
-		if stats.DocumentCount >= *indexLimit {
-			fmt.Printf("Finished indexing enough pages %d \n", stats.DocumentCount)
+		countStats, err = indexer.CrawlPage(db)
+		if err != nil {
+			fmt.Printf("got an error indexing page: %s\n", err.Error())
 			break
 		}
 	}
